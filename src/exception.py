@@ -3,11 +3,28 @@ import logging
 #from src.logger import logging
 
 def error_message_detail(error, error_detail:sys):
-    _,_,exc_tb = error_detail.exc_info()
-    file_name = exc_tb.tb_frame.f_code.co_filename
-    error_message = "Error occured in python script name [{0}] line number [{1}] error message [{2}]".format(
-        file_name, exc_tb.tb_lineno, str(error)
-    )
+    # error_detail is expected to be the 'sys' module so we can call sys.exc_info().
+    # However, sys.exc_info() may return (None, None, None) when there is no active exception.
+    _, _, exc_tb = error_detail.exc_info()
+    if exc_tb is None:
+        # No traceback available. Try to get caller frame info as a best-effort fallback.
+        try:
+            import inspect
+            # inspect.stack()[2] should point to the caller of the code that raised
+            frame_info = inspect.stack()[2]
+            file_name = frame_info.filename
+            line_no = frame_info.lineno
+        except Exception:
+            file_name = "<unknown>"
+            line_no = 0
+        error_message = "Error occured in python script name [{0}] line number [{1}] error message [{2}]".format(
+            file_name, line_no, str(error)
+        )
+    else:
+        file_name = exc_tb.tb_frame.f_code.co_filename
+        error_message = "Error occured in python script name [{0}] line number [{1}] error message [{2}]".format(
+            file_name, exc_tb.tb_lineno, str(error)
+        )
     return error_message
 
 class CustomException(Exception):
