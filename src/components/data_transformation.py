@@ -108,6 +108,27 @@ class DataTransformation:
             input_feature_test_df = test_df.drop(columns=[target_column_name], axis=1)
             target_feature_test_df = test_df[target_column_name]
 
+            # Frequency-encode high-cardinality categorical columns to reduce dimensionality
+            try:
+                high_card_threshold = 20
+                freq_encoded_cols = []
+                # find categorical columns in the input features
+                cat_cols_in_input = input_feature_train_df.select_dtypes(include=['object', 'category']).columns.tolist()
+                for col in cat_cols_in_input:
+                    n_unique = input_feature_train_df[col].nunique()
+                    if n_unique > high_card_threshold:
+                        # map to frequency (proportion) observed in train
+                        freq = input_feature_train_df[col].value_counts(normalize=True)
+                        input_feature_train_df[col] = input_feature_train_df[col].map(freq).fillna(0)
+                        input_feature_test_df[col] = input_feature_test_df[col].map(freq).fillna(0)
+                        freq_encoded_cols.append(col)
+
+                if freq_encoded_cols:
+                    logging.info(f"Applied frequency encoding to high-cardinality columns: {freq_encoded_cols}")
+            except Exception:
+                # if anything fails here, continue with original categorical values
+                logging.info("Frequency encoding step failed or skipped")
+
             # Build preprocessor using only input features (no target column)
             preprocessing_obj = self.get_data_transformer_object(input_feature_train_df)
 
