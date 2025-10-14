@@ -5,4 +5,5 @@ matplotlib
 seaborn
 catboost
 xgboost
--e .
+dill
+# -e .
