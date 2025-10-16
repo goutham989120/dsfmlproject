@@ -108,6 +108,35 @@ class DataTransformation:
             input_feature_test_df = test_df.drop(columns=[target_column_name], axis=1)
             target_feature_test_df = test_df[target_column_name]
 
+            # Small cleaning: if target is 'RAG' and contains percent-like strings
+            # (e.g., '75%', '299%'), convert those to the categorical RAG using
+            # simple thresholds. This avoids putting percent strings into a
+            # categorical encoder.
+            def _perc_to_rag(val):
+                try:
+                    if pd.isna(val):
+                        return val
+                    s = str(val).strip()
+                    if s.endswith('%'):
+                        v = float(s.rstrip('%'))
+                        # thresholds: tune as needed
+                        if v >= 70:
+                            return 'Green'
+                        if v >= 40:
+                            return 'Amber'
+                        return 'Red'
+                    return s
+                except Exception:
+                    return val
+
+            if target_column_name == 'RAG':
+                try:
+                    target_feature_train_df = target_feature_train_df.apply(_perc_to_rag)
+                    target_feature_test_df = target_feature_test_df.apply(_perc_to_rag)
+                    logging.info('Converted percent-like RAG values to categories')
+                except Exception:
+                    logging.info('RAG conversion skipped')
+
             # Frequency-encode high-cardinality categorical columns to reduce dimensionality
             try:
                 high_card_threshold = 20

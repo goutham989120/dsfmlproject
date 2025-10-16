@@ -322,10 +322,27 @@ def predict_with_reasons(input_csv: str = None, output_csv: str = None):
 				feat_reasons = []
 			predicted_reason = '; '.join(feat_reasons) if feat_reasons else 'Model-driven prediction (no simple rule triggered)'
 
+		# Determine a single predicted EAC date to include (best-effort): prefer Replan End -> Plan End -> Actual End
+		predicted_eac_date = None
+		for cand in ['Replan End', 'Plan End', 'Actual End']:
+			if cand in df.columns:
+				val = df[cand].iloc[i]
+				if pd.notna(val) and str(val).strip():
+					predicted_eac_date = val
+					break
+
+		# Read actual RAG value from input if present
+		actual_rag_value = None
+		if 'RAG' in df.columns:
+			v = df['RAG'].iloc[i]
+			actual_rag_value = v if pd.notna(v) else None
+
 		results.append({
 			'DSF Project ID': pid,
 			'predicted_RAG': pred_label,
 			'predicted_probability': prob,
+			'predicted_EAC_date': predicted_eac_date,
+			'actual_RAG': actual_rag_value,
 			'actual_RAG_reason': actual_rag_reason,
 			'predicted_RAG_reason': predicted_reason,
 		})
@@ -333,7 +350,26 @@ def predict_with_reasons(input_csv: str = None, output_csv: str = None):
 
 	out_df = pd.DataFrame(results)
 	os.makedirs(os.path.dirname(output_csv), exist_ok=True)
+
+	# Overwrite existing output to avoid appending heterogeneous rows or stray preamble lines
+	if os.path.exists(output_csv):
+		try:
+			os.remove(output_csv)
+		except Exception as e:
+			LOGGER.warning(f"Could not remove existing output file {output_csv}: {e}")
+
+	# write file and perform a quick sanity check that the header is the first line
 	out_df.to_csv(output_csv, index=False)
+	try:
+		with open(output_csv, 'r', encoding='utf-8') as f:
+			first_line = f.readline().strip()
+		expected = ','.join(out_df.columns.astype(str).tolist())
+		if first_line != expected:
+			LOGGER.warning(f"Output CSV header mismatch: first_line={first_line!r} expected={expected!r}. Rewriting file.")
+			out_df.to_csv(output_csv, index=False)
+	except Exception as e:
+		LOGGER.warning(f"Failed to validate written CSV header for {output_csv}: {e}")
+
 	print(f"Saved predictions with reasons to {output_csv}")
 	return out_df
 

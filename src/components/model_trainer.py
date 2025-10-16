@@ -80,10 +80,19 @@ class ModelTrainer:
 
             # Define models and hyperparameter grids
             if is_classification:
-                # Encode target labels
+                # Encode target labels (fit on train only). If the test set
+                # contains unseen labels, raise a clear error so the user can
+                # fix data (e.g., by cleaning percent strings or stratifying).
                 le = LabelEncoder()
                 y_train_enc = le.fit_transform(y_train)
-                y_test_enc = le.transform(y_test)
+                try:
+                    y_test_enc = le.transform(y_test)
+                except ValueError as e:
+                    raise CustomException(
+                        f"y_test contains labels not seen in y_train: {e}.\n"
+                        "Check target cleaning (percent strings), or use stratified split so classes appear in both sets.",
+                        sys,
+                    )
 
                 # Classifiers and grids - add higher-capacity models
                 models = {

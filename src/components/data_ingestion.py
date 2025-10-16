@@ -33,7 +33,16 @@ class DataIngestion:
             df.to_csv(self.ingestion_config.raw_data_path, index=False, header=True)
             logging.info("Raw data is saved")
 
-            train_set, test_set = train_test_split(df, test_size=0.2, random_state=42)
+            # If RAG exists and is intended as the target, stratify the split so
+            # that class proportions are preserved in train and test.
+            if 'RAG' in df.columns:
+                try:
+                    train_set, test_set = train_test_split(df, test_size=0.2, random_state=42, stratify=df['RAG'])
+                except Exception:
+                    # Fall back to simple split if stratify fails (e.g., very small classes)
+                    train_set, test_set = train_test_split(df, test_size=0.2, random_state=42)
+            else:
+                train_set, test_set = train_test_split(df, test_size=0.2, random_state=42)
 
             train_set.to_csv(self.ingestion_config.train_data_path, index=False, header=True)
             test_set.to_csv(self.ingestion_config.test_data_path, index=False, header=True)
