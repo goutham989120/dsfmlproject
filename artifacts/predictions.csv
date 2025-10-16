@@ -1,46 +1,46 @@
-predicted,actual,predicted_RAG_reason,actual_RAG_reason
-Red,Red,Work progress significantly ahead of schedule (Work% >> Time%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Red,Red,Work progress significantly ahead of schedule (Work% >> Time%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Red,Green,Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Red,Green,Work progress significantly ahead of schedule (Work% >> Time%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Red,Red,Work progress significantly behind schedule (Work% << Time%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Red,Red,Work progress significantly behind schedule (Work% << Time%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Green,Green,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk,
-Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Amber,Green,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Green,Green,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Green,Green,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Green,Green,Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Green,Green,Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Green,Green,Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Green,Green,Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Amber,Red,Work progress significantly behind schedule (Work% << Time%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Amber,Green,Work progress significantly behind schedule (Work% << Time%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Amber,Amber,Work progress significantly ahead of schedule (Work% >> Time%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Green,Red,Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Green,Green,Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Green,Green,Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Green,Green,Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Green,Green,Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Green,Green,Actual start differs from planned start (possible late start),
-Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Amber,Amber,Work progress significantly ahead of schedule (Work% >> Time%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),
-Amber,Amber,Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk,
-Amber,Amber,Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk,
-Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk,
-Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk,
-Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk,
-Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk,
-Amber,Red,Work progress significantly behind schedule (Work% << Time%); Low EAC efficiency -> potential effort risk,
-Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk,
-Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk,
-Red,Red,Work progress significantly behind schedule (Work% << Time%); Low EAC efficiency -> potential effort risk,
+predicted,actual,predicted_RAG_reason,actual_RAG_reason,predicted_EAC_date,actual_EAC_date
+Red,Red,Work progress significantly ahead of schedule (Work% >> Time%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,31-Jul-26,31-Jul-26
+Red,Red,Work progress significantly ahead of schedule (Work% >> Time%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,29-Aug-25,29-Aug-25
+Red,Green,Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,22-Jul-25,22-Jul-25
+Red,Green,Work progress significantly ahead of schedule (Work% >> Time%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,03-Sep-25,03-Sep-25
+Red,Red,Work progress significantly behind schedule (Work% << Time%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,12-Dec-25,12-Dec-25
+Red,Red,Work progress significantly behind schedule (Work% << Time%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,30-Jul-25,30-Jul-25
+Green,Green,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk,,16-Feb-26,16-Feb-26
+Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,31-Oct-25,31-Oct-25
+Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,10-Jul-25,10-Jul-25
+Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,30-Sep-25,30-Sep-25
+Amber,Green,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,12-Sep-25,12-Sep-25
+Green,Green,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,18-Sep-25,18-Sep-25
+Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,30-Jun-25,30-Jun-25
+Green,Green,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,31-Oct-25,31-Oct-25
+Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,19-Sep-25,19-Sep-25
+Green,Green,Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,26-Dec-25,26-Dec-25
+Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,30-Dec-25,30-Dec-25
+Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,31-Mar-26,31-Mar-26
+Green,Green,Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,30-Aug-25,30-Aug-25
+Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,30-Jul-25,30-Jul-25
+Green,Green,Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,30-Aug-25,30-Aug-25
+Amber,Green,Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,31-Dec-26,31-Dec-26
+Amber,Red,Work progress significantly behind schedule (Work% << Time%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,29-Aug-25,29-Aug-25
+Amber,Green,Work progress significantly behind schedule (Work% << Time%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,18-Dec-25,18-Dec-25
+Amber,Amber,Work progress significantly ahead of schedule (Work% >> Time%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,30-Apr-27,30-Apr-27
+Green,Red,Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,31-Aug-25,31-Aug-25
+Green,Green,Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,05-Dec-25,05-Dec-25
+Green,Green,Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,31-Mar-26,31-Mar-26
+Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,30-Dec-25,30-Dec-25
+Green,Green,Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,27-Feb-26,27-Feb-26
+Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,19-Sep-25,19-Sep-25
+Green,Green,Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,30-Dec-25,30-Dec-25
+Green,Green,Actual start differs from planned start (possible late start),,30-Sep-25,30-Sep-25
+Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,30-Oct-25,30-Oct-25
+Amber,Amber,Work progress significantly ahead of schedule (Work% >> Time%); Low EAC efficiency -> potential effort risk; Actual start differs from planned start (possible late start),,31-Aug-33,31-Aug-33
+Amber,Amber,Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk,,29-Jun-26,29-Jun-26
+Amber,Amber,Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk,,31-Dec-26,31-Dec-26
+Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk,,15-Dec-25,15-Dec-25
+Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk,,31-Dec-25,31-Dec-25
+Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk,,31-Dec-25,31-Dec-25
+Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk,,12-Sep-25,12-Sep-25
+Amber,Red,Work progress significantly behind schedule (Work% << Time%); Low EAC efficiency -> potential effort risk,,28-Nov-25,28-Nov-25
+Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk,,22-Sep-25,22-Sep-25
+Amber,Amber,Work progress significantly behind schedule (Work% << Time%); Low effort consumption relative to plan (Effort Prog < 50%); Low EAC efficiency -> potential effort risk,,30-Jun-25,30-Jun-25
+Red,Red,Work progress significantly behind schedule (Work% << Time%); Low EAC efficiency -> potential effort risk,,31-Dec-25,31-Dec-25

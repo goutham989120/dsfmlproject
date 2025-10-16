@@ -16,13 +16,8 @@ from sklearn.ensemble import (
     AdaBoostClassifier
 )
 from sklearn.linear_model import LinearRegression, LogisticRegression, RidgeCV
-from sklearn.metrics import (
-    r2_score,
-    mean_absolute_error,
-    mean_squared_error,
-    accuracy_score
-)
-from sklearn.model_selection import GridSearchCV, StratifiedKFold
+from sklearn.metrics import r2_score, accuracy_score
+from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
@@ -38,14 +33,17 @@ try:
 except ImportError:
     lightgbm_available = False
 
-# lightweight rule-based explainer reused from prediction pipeline
+# Lightweight rule-based explainer reused from prediction pipeline
 try:
     from src.pipeline.predict_pipeline import reason_from_row
 except Exception:
     def reason_from_row(row: pd.Series) -> str:
         try:
-            txt = row.get('RAG Reason + Observations', '')
-            return txt if pd.notna(txt) else ''
+            reasons = []
+            for col in ['RAG Reason + Observations', 'RAG Reason', 'RAG']:
+                if col in row and pd.notna(row[col]):
+                    reasons.append(str(row[col]))
+            return "; ".join(reasons) if reasons else ''
         except Exception:
             return ''
 
@@ -54,11 +52,49 @@ except Exception:
 class ModelTrainerConfig:
     trained_model_file_path = os.path.join("artifacts", "model.pkl")
     comparison_plot_path = os.path.join("artifacts", "model_comparison.png")
+    model_scores_csv = os.path.join("artifacts", "model_scores.csv")
+    train_csv = os.path.join("artifacts", "train.csv")
+    test_csv = os.path.join("artifacts", "test.csv")
 
 
 class ModelTrainer:
     def __init__(self):
         self.model_trainer_config = ModelTrainerConfig()
+
+    def prepare_train_test(self, df: pd.DataFrame, target_col='RAG', test_size=0.2, random_state=42):
+        """
+        Splits dataframe into train/test and preserves actual RAG reason
+        """
+        try:
+            if target_col not in df.columns:
+                raise CustomException(f"Target column '{target_col}' not found in dataframe", sys)
+
+            # Ensure actual_RAG_reason is always present
+            if 'RAG Reason + Observations' in df.columns:
+                df['actual_RAG_reason'] = df['RAG Reason + Observations']
+            else:
+                df['actual_RAG_reason'] = ''
+
+            # Stratify split if target has multiple classes
+            stratify_col = df[target_col] if df[target_col].nunique() > 1 else None
+            train_df, test_df = train_test_split(df, test_size=test_size, stratify=stratify_col, random_state=random_state)
+
+            # Save train/test for pipeline use
+            os.makedirs(os.path.dirname(self.model_trainer_config.train_csv), exist_ok=True)
+            train_df.to_csv(self.model_trainer_config.train_csv, index=False)
+            test_df.to_csv(self.model_trainer_config.test_csv, index=False)
+
+            logging.info(f"Train CSV saved to {self.model_trainer_config.train_csv} ({len(train_df)} rows)")
+            logging.info(f"Test CSV saved to {self.model_trainer_config.test_csv} ({len(test_df)} rows)")
+
+            # Return arrays for model training
+            train_array = train_df.drop(columns=['actual_RAG_reason']).values
+            test_array = test_df.drop(columns=['actual_RAG_reason']).values
+            return train_array, test_array
+
+        except Exception as e:
+            logging.error("Error during train/test preparation")
+            raise CustomException(e, sys)
 
     def initiate_model_trainer(self, train_array, test_array, tune_hyperparams=True):
         try:
@@ -158,7 +194,7 @@ class ModelTrainer:
 
             # ==================== TRAINING LOOP ====================
             best_models = {}
-            best_scores = {}
+            test_scores = {}
 
             for name, model in models.items():
                 logging.info(f"Training model: {name}")
@@ -171,55 +207,52 @@ class ModelTrainer:
                             if min_count < 3:
                                 logging.info(f"Skipping GridSearchCV for {name}: too few samples (min_count={min_count})")
                                 model.fit(X_train, y_train_enc)
-                                best_model = model
-                                best_score = accuracy_score(y_train_enc, model.predict(X_train))
                             else:
                                 n_splits = 2 if min_count < 6 else 3
                                 skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
                                 grid = GridSearchCV(model, param_grids[name], cv=skf, scoring='accuracy', n_jobs=-1)
                                 grid.fit(X_train, y_train_enc)
-                                best_model = grid.best_estimator_
-                                best_score = grid.best_score_
+                                model = grid.best_estimator_
                         else:
                             grid = GridSearchCV(model, param_grids[name], cv=3, scoring='r2', n_jobs=-1)
                             grid.fit(X_train, y_train)
-                            best_model = grid.best_estimator_
-                            best_score = grid.best_score_
+                            model = grid.best_estimator_
                     except Exception as ex:
                         logging.warning(f"GridSearchCV failed for {name}: {ex}")
                         model.fit(X_train, y_train_enc if is_classification else y_train)
-                        best_model = model
-                        best_score = accuracy_score(y_train_enc, model.predict(X_train)) if is_classification else r2_score(y_train, model.predict(X_train))
                 else:
                     model.fit(X_train, y_train_enc if is_classification else y_train)
-                    best_model = model
-                    best_score = accuracy_score(y_train_enc, model.predict(X_train)) if is_classification else r2_score(y_train, model.predict(X_train))
 
-                best_models[name] = best_model
-                best_scores[name] = best_score
+                best_models[name] = model
+
+                # Evaluate on test set
+                if is_classification:
+                    y_pred_test = model.predict(X_test)
+                    score = accuracy_score(y_test_enc, y_pred_test)
+                else:
+                    y_pred_test = model.predict(X_test)
+                    score = r2_score(y_test, y_pred_test)
+
+                test_scores[name] = score
 
             # ==================== MODEL SELECTION ====================
-            best_model_name = max(best_scores, key=best_scores.get)
+            best_model_name = max(test_scores, key=test_scores.get)
             best_model = best_models[best_model_name]
-            logging.info(f"✅ Best model: {best_model_name} (train score: {best_scores[best_model_name]:.4f})")
+            logging.info(f"✅ Best model: {best_model_name} (test score: {test_scores[best_model_name]:.4f})")
 
             save_object(self.model_trainer_config.trained_model_file_path, best_model)
 
-            # ==================== EVALUATION ====================
-            if is_classification:
-                y_pred = best_model.predict(X_test)
-                final_score = accuracy_score(y_test_enc, y_pred)
-                print(f"✅ Best Model: {best_model_name} | Accuracy: {final_score:.4f}")
-            else:
-                y_pred = best_model.predict(X_test)
-                final_score = r2_score(y_test, y_pred)
-                print(f"✅ Best Model: {best_model_name} | R²: {final_score:.4f}")
+            # ==================== SAVE MODEL SCORES ====================
+            os.makedirs(os.path.dirname(self.model_trainer_config.model_scores_csv), exist_ok=True)
+            scores_df = pd.DataFrame(list(test_scores.items()), columns=["Model", "Score"])
+            scores_df.to_csv(self.model_trainer_config.model_scores_csv, index=False)
+            logging.info(f"Saved model scores to {self.model_trainer_config.model_scores_csv}")
 
             # ==================== PLOT COMPARISON ====================
             try:
                 plt.figure(figsize=(10,6))
-                sorted_models = dict(sorted(best_scores.items(), key=lambda item: item[1], reverse=True))
-                plt.bar(sorted_models.keys(), sorted_models.values(), color='skyblue')
+                sorted_scores = dict(sorted(test_scores.items(), key=lambda item: item[1], reverse=True))
+                plt.bar(sorted_scores.keys(), sorted_scores.values(), color='skyblue')
                 plt.xticks(rotation=45, ha='right')
                 ylabel = 'Accuracy' if is_classification else 'R² Score'
                 plt.ylabel(ylabel)
@@ -232,7 +265,7 @@ class ModelTrainer:
             except Exception as e:
                 logging.warning(f"Failed to save model comparison plot: {e}")
 
-            return final_score
+            return best_model_name, test_scores[best_model_name]
 
         except Exception as e:
             logging.error("Error occurred during model training")
