@@ -2,42 +2,46 @@ import os
 import sys
 from dataclasses import dataclass
 import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
 
-from catboost import CatBoostRegressor
+from catboost import CatBoostRegressor, CatBoostClassifier
+from xgboost import XGBRegressor, XGBClassifier
 from sklearn.ensemble import (
     AdaBoostRegressor,
     GradientBoostingRegressor,
     RandomForestRegressor,
+    StackingRegressor,
+    RandomForestClassifier,
+    AdaBoostClassifier
 )
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import r2_score, accuracy_score
-from sklearn.metrics import classification_report, roc_curve, auc
-from sklearn.preprocessing import label_binarize
-from sklearn.model_selection import GridSearchCV
-from sklearn.neighbors import KNeighborsRegressor
-from sklearn.tree import DecisionTreeRegressor
-from xgboost import XGBRegressor
-
-# classifiers for classification branch
-from sklearn.ensemble import RandomForestClassifier, AdaBoostClassifier
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LinearRegression, LogisticRegression, RidgeCV
+from sklearn.metrics import (
+    r2_score,
+    mean_absolute_error,
+    mean_squared_error,
+    accuracy_score
+)
+from sklearn.model_selection import GridSearchCV, StratifiedKFold
 from sklearn.preprocessing import LabelEncoder
-from sklearn.model_selection import StratifiedKFold
-from xgboost import XGBClassifier
-from catboost import CatBoostClassifier
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
 
 from src.exception import CustomException
 from src.logger import logging
-from src.utils import save_object, evaluate_models
-import matplotlib.pyplot as plt
-from sklearn.metrics import confusion_matrix
-import pandas as pd
+from src.utils import save_object
+
+# Optional LightGBM support
+try:
+    from lightgbm import LGBMRegressor
+    lightgbm_available = True
+except ImportError:
+    lightgbm_available = False
+
 # lightweight rule-based explainer reused from prediction pipeline
 try:
     from src.pipeline.predict_pipeline import reason_from_row
 except Exception:
-    # fallback: define a minimal stub so training doesn't break if import fails
     def reason_from_row(row: pd.Series) -> str:
         try:
             txt = row.get('RAG Reason + Observations', '')
@@ -45,9 +49,12 @@ except Exception:
         except Exception:
             return ''
 
+
 @dataclass
 class ModelTrainerConfig:
     trained_model_file_path = os.path.join("artifacts", "model.pkl")
+    comparison_plot_path = os.path.join("artifacts", "model_comparison.png")
+
 
 class ModelTrainer:
     def __init__(self):
@@ -63,23 +70,22 @@ class ModelTrainer:
                 test_array[:, -1],
             )
 
-            # Detect if target is categorical (optional)
-            is_classification = False
-            if train_array[:, -1].dtype == object:
+            # Determine problem type
+            try:
+                pd.to_numeric(y_train, errors='raise')
+                is_classification = False
+            except Exception:
                 is_classification = True
 
-            # Optionally drop identifier-like column (e.g., DSF Project ID) if present
-            # Heuristic: if first column contains strings starting with 'DSF' or 'DSFFLOW', drop it
+            # Drop ID-like first column if detected
             try:
                 first_col_vals = train_array[:, 0]
                 if first_col_vals.dtype == object:
                     sample = str(first_col_vals[0])
                     if sample.startswith('DSF') or 'DSFFLOW' in sample:
-                        logging.info("Dropping identifier-like first column from features (assumed DSF Project ID)")
-                        # remove first column from train and test arrays
+                        logging.info("Dropping identifier-like first column (assumed DSF Project ID)")
                         train_array = np.delete(train_array, 0, axis=1)
                         test_array = np.delete(test_array, 0, axis=1)
-                        # recompute splits
                         X_train, y_train, X_test, y_test = (
                             train_array[:, :-1],
                             train_array[:, -1],
@@ -89,28 +95,22 @@ class ModelTrainer:
             except Exception:
                 pass
 
-            # Define models and hyperparameter grids
+            # ==================== MODEL DEFINITIONS ====================
             if is_classification:
-                # Encode target labels (fit on train only). If the test set
-                # contains unseen labels, raise a clear error so the user can
-                # fix data (e.g., by cleaning percent strings or stratifying).
+                y_train = y_train.astype(str)
+                y_test = y_test.astype(str)
                 le = LabelEncoder()
                 y_train_enc = le.fit_transform(y_train)
                 try:
                     y_test_enc = le.transform(y_test)
                 except ValueError as e:
-                    raise CustomException(
-                        f"y_test contains labels not seen in y_train: {e}.\n"
-                        "Check target cleaning (percent strings), or use stratified split so classes appear in both sets.",
-                        sys,
-                    )
+                    raise CustomException(f"y_test contains unseen labels: {e}", sys)
 
-                # Classifiers and grids - add higher-capacity models
                 models = {
                     "Random Forest": RandomForestClassifier(),
                     "Decision Tree": DecisionTreeClassifier(),
                     "Logistic Regression": LogisticRegression(max_iter=1000),
-                    "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='logloss'),
+                    "XGBoost": XGBClassifier(eval_metric='logloss'),
                     "CatBoost": CatBoostClassifier(verbose=False),
                 }
 
@@ -118,257 +118,121 @@ class ModelTrainer:
                     "Random Forest": {"n_estimators": [200, 500], "max_depth": [None, 10, 20]},
                     "Decision Tree": {"max_depth": [None, 5, 10, 20]},
                     "Logistic Regression": {"C": [0.01, 0.1, 1, 10]},
-                    "XGBoost": {"n_estimators": [100, 300], "learning_rate": [0.01, 0.1], "max_depth": [3, 6]},
-                    "CatBoost": {"depth": [4, 6], "learning_rate": [0.03, 0.1], "iterations": [200]},
+                    "XGBoost": {"n_estimators": [200, 400], "learning_rate": [0.03, 0.1], "max_depth": [4, 6]},
+                    "CatBoost": {"depth": [6, 8], "learning_rate": [0.03, 0.1], "iterations": [300]},
                 }
+
             else:
                 models = {
-                    "Random Forest": RandomForestRegressor(),
-                    "Decision Tree": DecisionTreeRegressor(),
-                    "Gradient Boosting": GradientBoostingRegressor(),
                     "Linear Regression": LinearRegression(),
-                    "K-Neighbors Regressor": KNeighborsRegressor(),
-                    "XGB Regressor": XGBRegressor(),
-                    "CatBoosting Regressor": CatBoostRegressor(verbose=False),
-                    "AdaBoost Regressor": AdaBoostRegressor(),
+                    "Decision Tree": DecisionTreeRegressor(),
+                    "Random Forest": RandomForestRegressor(),
+                    "Gradient Boosting": GradientBoostingRegressor(),
+                    "XGBoost": XGBRegressor(),
+                    "CatBoost": CatBoostRegressor(verbose=False),
+                    "AdaBoost": AdaBoostRegressor(),
+                    "KNN": KNeighborsRegressor(),
                 }
+
+                if lightgbm_available:
+                    models["LightGBM"] = LGBMRegressor()
+
+                # Add Stacking Ensemble
+                base_estimators = [
+                    ('cat', CatBoostRegressor(iterations=500, depth=8, learning_rate=0.03, verbose=0)),
+                    ('xgb', XGBRegressor(n_estimators=500, learning_rate=0.05, max_depth=6, random_state=42)),
+                    ('rf', RandomForestRegressor(n_estimators=200, random_state=42)),
+                ]
+                models["Stacking Ensemble"] = StackingRegressor(estimators=base_estimators, final_estimator=RidgeCV())
 
                 param_grids = {
-                    "Random Forest": {"n_estimators": [100, 200], "max_depth": [None, 5, 10]},
+                    "Random Forest": {"n_estimators": [200, 400], "max_depth": [None, 10, 20]},
                     "Decision Tree": {"max_depth": [None, 5, 10]},
-                    "Gradient Boosting": {"n_estimators": [100, 200], "learning_rate": [0.01, 0.05, 0.1], "max_depth": [3, 5, 7]},
-                    "Linear Regression": {},  # No hyperparameters
-                    "K-Neighbors Regressor": {"n_neighbors": [3, 5, 7], "weights": ["uniform", "distance"]},
-                    "XGB Regressor": {"n_estimators": [100, 200], "learning_rate": [0.01, 0.05, 0.1], "max_depth": [3, 5, 7]},
-                    "CatBoosting Regressor": {"depth": [4, 6, 8], "learning_rate": [0.01, 0.05, 0.1], "iterations": [100, 200]},
-                    "AdaBoost Regressor": {"n_estimators": [50, 100], "learning_rate": [0.01, 0.05, 0.1]},
+                    "Gradient Boosting": {"n_estimators": [200, 400], "learning_rate": [0.03, 0.05, 0.1]},
+                    "XGBoost": {"n_estimators": [300, 600], "learning_rate": [0.03, 0.05], "max_depth": [5, 8]},
+                    "CatBoost": {"depth": [6, 8], "learning_rate": [0.03, 0.05], "iterations": [500]},
+                    "LightGBM": {"n_estimators": [500, 1000], "learning_rate": [0.02, 0.05], "num_leaves": [31, 64]} if lightgbm_available else {},
+                    "KNN": {"n_neighbors": [3, 5, 7]},
+                    "AdaBoost": {"n_estimators": [100, 200], "learning_rate": [0.03, 0.1]},
                 }
 
+            # ==================== TRAINING LOOP ====================
             best_models = {}
             best_scores = {}
 
-            # Loop through all models for hyperparameter tuning
             for name, model in models.items():
-                logging.info(f"Training and tuning model: {name}")
-
+                logging.info(f"Training model: {name}")
                 if tune_hyperparams and param_grids.get(name):
-                    grid = GridSearchCV(
-                        estimator=model,
-                        param_grid=param_grids[name],
-                        cv=3,
-                        scoring='accuracy' if is_classification else 'r2',
-                        n_jobs=-1,
-                    )
-                    # For classification, ensure there are enough samples per class for cv
-                    if is_classification:
-                        from collections import Counter
-                        class_counts = Counter(y_train_enc)
-                        min_count = min(class_counts.values()) if class_counts else 0
-                        # determine cv strategy
-                        if min_count < 3:
-                            # too few samples for stratified 3-fold CV; skip GridSearch and do direct fit
-                            logging.info(f"Skipping GridSearchCV for {name} due to small class sizes (min_count={min_count}); performing direct fit")
-                            model.fit(X_train, y_train_enc)
-                            best_model = model
-                            best_score = accuracy_score(y_train_enc, model.predict(X_train))
+                    try:
+                        if is_classification:
+                            from collections import Counter
+                            class_counts = Counter(y_train_enc)
+                            min_count = min(class_counts.values()) if class_counts else 0
+                            if min_count < 3:
+                                logging.info(f"Skipping GridSearchCV for {name}: too few samples (min_count={min_count})")
+                                model.fit(X_train, y_train_enc)
+                                best_model = model
+                                best_score = accuracy_score(y_train_enc, model.predict(X_train))
+                            else:
+                                n_splits = 2 if min_count < 6 else 3
+                                skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+                                grid = GridSearchCV(model, param_grids[name], cv=skf, scoring='accuracy', n_jobs=-1)
+                                grid.fit(X_train, y_train_enc)
+                                best_model = grid.best_estimator_
+                                best_score = grid.best_score_
                         else:
-                            # use StratifiedKFold for classification
-                            skf = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
-                            grid = GridSearchCV(
-                                estimator=model,
-                                param_grid=param_grids[name],
-                                cv=skf,
-                                scoring='accuracy',
-                                n_jobs=-1,
-                            )
-                            grid.fit(X_train, y_train_enc)
+                            grid = GridSearchCV(model, param_grids[name], cv=3, scoring='r2', n_jobs=-1)
+                            grid.fit(X_train, y_train)
                             best_model = grid.best_estimator_
                             best_score = grid.best_score_
-                    else:
-                        grid.fit(X_train, y_train)
-                        best_model = grid.best_estimator_
-                        best_score = grid.best_score_
-                    # Log best params only if GridSearchCV was run and found results
-                    if hasattr(grid, 'best_params_'):
-                        logging.info(f"Best params for {name}: {grid.best_params_}")
+                    except Exception as ex:
+                        logging.warning(f"GridSearchCV failed for {name}: {ex}")
+                        model.fit(X_train, y_train_enc if is_classification else y_train)
+                        best_model = model
+                        best_score = accuracy_score(y_train_enc, model.predict(X_train)) if is_classification else r2_score(y_train, model.predict(X_train))
                 else:
-                    if is_classification:
-                        model.fit(X_train, y_train_enc)
-                        best_model = model
-                        best_score = accuracy_score(y_train_enc, model.predict(X_train))
-                    else:
-                        model.fit(X_train, y_train)
-                        best_model = model
-                        best_score = r2_score(y_train, model.predict(X_train))
+                    model.fit(X_train, y_train_enc if is_classification else y_train)
+                    best_model = model
+                    best_score = accuracy_score(y_train_enc, model.predict(X_train)) if is_classification else r2_score(y_train, model.predict(X_train))
 
                 best_models[name] = best_model
                 best_scores[name] = best_score
 
-            # Select the best model
+            # ==================== MODEL SELECTION ====================
             best_model_name = max(best_scores, key=best_scores.get)
-            best_model_score = best_scores[best_model_name]
             best_model = best_models[best_model_name]
-            logging.info(f"Best model selected: {best_model_name} with R2 score {best_model_score}")
+            logging.info(f"✅ Best model: {best_model_name} (train score: {best_scores[best_model_name]:.4f})")
 
-            # Save the best model
-            save_object(file_path=self.model_trainer_config.trained_model_file_path, obj=best_model)
+            save_object(self.model_trainer_config.trained_model_file_path, best_model)
 
-            # Evaluate on test data
+            # ==================== EVALUATION ====================
             if is_classification:
                 y_pred = best_model.predict(X_test)
                 final_score = accuracy_score(y_test_enc, y_pred)
-                logging.info(f"Final accuracy on test data: {final_score}")
-                print(f"Final Accuracy: {final_score}")
-
-                # Save predictions vs actual to CSV
-                try:
-                    # If we have a label encoder, inverse transform for readability
-                    try:
-                        y_pred_readable = le.inverse_transform(y_pred)
-                        y_test_readable = le.inverse_transform(y_test_enc)
-                    except Exception:
-                        y_pred_readable = y_pred
-                        y_test_readable = y_test_enc
-
-                    preds_df = pd.DataFrame({
-                        'predicted': y_pred_readable,
-                        'actual': y_test_readable,
-                    })
-                    # attempt to enrich with human-readable reasons if original test CSV is available
-                    try:
-                        test_csv_path = os.path.join('artifacts', 'test.csv')
-                        if os.path.exists(test_csv_path):
-                            test_rows = pd.read_csv(test_csv_path)
-                            test_rows.columns = test_rows.columns.str.strip()
-                            # if counts match, compute reasons per-row
-                            if len(test_rows) == len(preds_df):
-                                predicted_reasons = []
-                                actual_reasons = []
-                                for idx in range(len(test_rows)):
-                                    row = test_rows.iloc[idx]
-                                    # predicted reason: rule-based from the raw row
-                                    try:
-                                        pr = reason_from_row(row)
-                                    except Exception:
-                                        pr = ''
-                                    predicted_reasons.append(pr or '')
-
-                                    # actual reason: preserve any existing RAG Reason + Observations field
-                                    try:
-                                        ar = row.get('RAG Reason + Observations', '')
-                                        if pd.isna(ar):
-                                            ar = ''
-                                    except Exception:
-                                        ar = ''
-                                    actual_reasons.append(ar)
-
-                                preds_df['predicted_RAG_reason'] = predicted_reasons
-                                preds_df['actual_RAG_reason'] = actual_reasons
-                            else:
-                                # length mismatch: add empty columns to keep schema consistent
-                                preds_df['predicted_RAG_reason'] = ''
-                                preds_df['actual_RAG_reason'] = ''
-                        else:
-                            preds_df['predicted_RAG_reason'] = ''
-                            preds_df['actual_RAG_reason'] = ''
-                    except Exception:
-                        preds_df['predicted_RAG_reason'] = ''
-                        preds_df['actual_RAG_reason'] = ''
-                    preds_csv_path = os.path.join('artifacts', 'predictions.csv')
-                    preds_df.to_csv(preds_csv_path, index=False)
-                    logging.info(f"Saved predictions to {preds_csv_path}")
-                except Exception:
-                    logging.info("Failed to save predictions CSV")
-
-                # Save confusion matrix plot
-                try:
-                    cm = confusion_matrix(y_test_enc, y_pred)
-                    fig, ax = plt.subplots(figsize=(6, 6))
-                    ax.matshow(cm, cmap=plt.cm.Blues, alpha=0.7)
-                    for (i, j), val in np.ndenumerate(cm):
-                        ax.text(j, i, int(val), ha='center', va='center')
-                    ax.set_xlabel('Predicted')
-                    ax.set_ylabel('Actual')
-                    ax.set_title('Confusion Matrix')
-                    cm_path = os.path.join('artifacts', 'confusion_matrix.png')
-                    fig.savefig(cm_path)
-                    plt.close(fig)
-                    logging.info(f"Saved confusion matrix to {cm_path}")
-                except Exception:
-                    logging.info("Failed to save confusion matrix plot")
-
-                # Save model bundle (model + label encoder) for future inference
-                try:
-                    model_bundle = {
-                        'model': best_model,
-                        'label_encoder': le,
-                    }
-                    bundle_path = os.path.join('artifacts', 'model_bundle.pkl')
-                    save_object(file_path=bundle_path, obj=model_bundle)
-                    logging.info(f"Saved model bundle (model + label encoder) to {bundle_path}")
-                except Exception:
-                    logging.info("Failed to save model bundle with label encoder")
-
-                # Produce classification report and save
-                try:
-                    report = classification_report(y_test_enc, y_pred, target_names=(le.classes_ if hasattr(le, 'classes_') else None))
-                    report_path = os.path.join('artifacts', 'classification_report.txt')
-                    with open(report_path, 'w') as f:
-                        f.write(report)
-                    logging.info(f"Saved classification report to {report_path}")
-                except Exception:
-                    logging.info("Failed to save classification report")
-
-                # Compute and save ROC curves for multiclass
-                try:
-                    classes = np.unique(y_test_enc)
-                    n_classes = len(classes)
-                    # Binarize the output
-                    y_test_bin = label_binarize(y_test_enc, classes=classes)
-                    # get prediction scores/probabilities
-                    try:
-                        y_score = best_model.predict_proba(X_test)
-                    except Exception:
-                        # fall back to decision function
-                        y_score = best_model.decision_function(X_test)
-                    # if binary, ensure shape
-                    if n_classes == 2 and y_score.ndim == 1:
-                        y_score = np.vstack([1 - y_score, y_score]).T
-
-                    # Compute ROC curve and AUC for each class
-                    fpr = dict()
-                    tpr = dict()
-                    roc_auc = dict()
-                    for i in range(n_classes):
-                        fpr[i], tpr[i], _ = roc_curve(y_test_bin[:, i], y_score[:, i])
-                        roc_auc[i] = auc(fpr[i], tpr[i])
-
-                    # Plot all ROC curves
-                    fig, ax = plt.subplots(figsize=(8, 6))
-                    colors = ['aqua', 'darkorange', 'cornflowerblue', 'green', 'red']
-                    for i in range(n_classes):
-                        label = f"Class {le.classes_[i]} (AUC = {roc_auc[i]:.2f})" if hasattr(le, 'classes_') else f"Class {i} (AUC = {roc_auc[i]:.2f})"
-                        ax.plot(fpr[i], tpr[i], color=colors[i % len(colors)], lw=2, label=label)
-                    ax.plot([0, 1], [0, 1], 'k--', lw=2)
-                    ax.set_xlim([0.0, 1.0])
-                    ax.set_ylim([0.0, 1.05])
-                    ax.set_xlabel('False Positive Rate')
-                    ax.set_ylabel('True Positive Rate')
-                    ax.set_title('Receiver Operating Characteristic (ROC)')
-                    ax.legend(loc='lower right')
-                    roc_path = os.path.join('artifacts', 'roc_curves.png')
-                    fig.savefig(roc_path)
-                    plt.close(fig)
-                    logging.info(f"Saved ROC curves to {roc_path}")
-                except Exception:
-                    logging.info("Failed to compute or save ROC curves")
+                print(f"✅ Best Model: {best_model_name} | Accuracy: {final_score:.4f}")
             else:
                 y_pred = best_model.predict(X_test)
-                final_r2 = r2_score(y_test, y_pred)
-                logging.info(f"Final R2 score on test data: {final_r2}")
-                print(f"Final R2 Score: {final_r2}")
+                final_score = r2_score(y_test, y_pred)
+                print(f"✅ Best Model: {best_model_name} | R²: {final_score:.4f}")
 
-            return final_score if is_classification else final_r2
+            # ==================== PLOT COMPARISON ====================
+            try:
+                plt.figure(figsize=(10,6))
+                sorted_models = dict(sorted(best_scores.items(), key=lambda item: item[1], reverse=True))
+                plt.bar(sorted_models.keys(), sorted_models.values(), color='skyblue')
+                plt.xticks(rotation=45, ha='right')
+                ylabel = 'Accuracy' if is_classification else 'R² Score'
+                plt.ylabel(ylabel)
+                plt.title(f'Model Comparison ({ylabel})')
+                plt.tight_layout()
+                os.makedirs(os.path.dirname(self.model_trainer_config.comparison_plot_path), exist_ok=True)
+                plt.savefig(self.model_trainer_config.comparison_plot_path)
+                plt.close()
+                logging.info(f"Saved model comparison plot to {self.model_trainer_config.comparison_plot_path}")
+            except Exception as e:
+                logging.warning(f"Failed to save model comparison plot: {e}")
+
+            return final_score
 
         except Exception as e:
             logging.error("Error occurred during model training")

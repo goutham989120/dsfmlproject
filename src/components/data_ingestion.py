@@ -57,6 +57,9 @@ class DataIngestion:
         except Exception as e:
             logging.info("Exception occurred at data ingestion stage")
             raise CustomException(e, sys)
+        
+        
+
 
 if __name__ == "__main__":
     obj = DataIngestion()
