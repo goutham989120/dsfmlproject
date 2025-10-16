@@ -371,6 +371,51 @@ def predict_with_reasons(input_csv: str = None, output_csv: str = None):
 		LOGGER.warning(f"Failed to validate written CSV header for {output_csv}: {e}")
 
 	print(f"Saved predictions with reasons to {output_csv}")
+
+	# Also write a compact predictions CSV (used by some dashboards/tests) with just predicted/actual and reasons
+	compact_path = os.path.join('artifacts', 'predictions.csv')
+	# default header-only compact dataframe
+	compact_df = pd.DataFrame(columns=['predicted', 'actual', 'predicted_RAG_reason', 'actual_RAG_reason'])
+
+	# Try to restrict compact CSV to test rows by matching IDs in artifacts/test.csv
+	test_path = os.path.join('artifacts', 'test.csv')
+	if os.path.exists(test_path):
+		try:
+			test_df = pd.read_csv(test_path)
+			test_df.columns = test_df.columns.str.strip()
+			# candidate id columns to try
+			id_candidates = [c for c in ['DSF Project ID', 'Project ID', 'project_id'] if c in test_df.columns]
+			# also consider id_col detected in input file
+			if id_col is not None:
+				id_candidates.insert(0, id_col)
+			# find the first candidate that exists in test_df
+			found = None
+			for c in id_candidates:
+				if c in test_df.columns:
+					found = c
+					break
+			if found is not None:
+				test_ids = set(test_df[found].dropna().astype(str).str.strip().tolist())
+				# filter predictions for rows matching those IDs
+				if 'DSF Project ID' in out_df.columns:
+					matched = out_df[out_df['DSF Project ID'].astype(str).str.strip().isin(test_ids)]
+				else:
+					matched = out_df[out_df.index.isin([])]
+				if not matched.empty:
+					compact_df = matched[['predicted_RAG', 'actual_RAG', 'predicted_RAG_reason', 'actual_RAG_reason']].copy()
+					compact_df = compact_df.rename(columns={'predicted_RAG': 'predicted', 'actual_RAG': 'actual'})
+				else:
+					LOGGER.info('Test CSV present but no matching prediction rows found; writing header-only compact CSV')
+		except Exception as e:
+			LOGGER.warning(f'Failed to read or match test CSV for compact predictions: {e}')
+
+	# write compact CSV (filtered or header-only)
+	try:
+		compact_df.to_csv(compact_path, index=False)
+		LOGGER.info(f"Saved compact predictions to {compact_path} (rows={len(compact_df)})")
+	except Exception as e:
+		LOGGER.warning(f"Failed to write compact predictions CSV: {e}")
+
 	return out_df
 
 

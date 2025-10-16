@@ -33,6 +33,17 @@ from src.utils import save_object, evaluate_models
 import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix
 import pandas as pd
+# lightweight rule-based explainer reused from prediction pipeline
+try:
+    from src.pipeline.predict_pipeline import reason_from_row
+except Exception:
+    # fallback: define a minimal stub so training doesn't break if import fails
+    def reason_from_row(row: pd.Series) -> str:
+        try:
+            txt = row.get('RAG Reason + Observations', '')
+            return txt if pd.notna(txt) else ''
+        except Exception:
+            return ''
 
 @dataclass
 class ModelTrainerConfig:
@@ -223,6 +234,46 @@ class ModelTrainer:
                         'predicted': y_pred_readable,
                         'actual': y_test_readable,
                     })
+                    # attempt to enrich with human-readable reasons if original test CSV is available
+                    try:
+                        test_csv_path = os.path.join('artifacts', 'test.csv')
+                        if os.path.exists(test_csv_path):
+                            test_rows = pd.read_csv(test_csv_path)
+                            test_rows.columns = test_rows.columns.str.strip()
+                            # if counts match, compute reasons per-row
+                            if len(test_rows) == len(preds_df):
+                                predicted_reasons = []
+                                actual_reasons = []
+                                for idx in range(len(test_rows)):
+                                    row = test_rows.iloc[idx]
+                                    # predicted reason: rule-based from the raw row
+                                    try:
+                                        pr = reason_from_row(row)
+                                    except Exception:
+                                        pr = ''
+                                    predicted_reasons.append(pr or '')
+
+                                    # actual reason: preserve any existing RAG Reason + Observations field
+                                    try:
+                                        ar = row.get('RAG Reason + Observations', '')
+                                        if pd.isna(ar):
+                                            ar = ''
+                                    except Exception:
+                                        ar = ''
+                                    actual_reasons.append(ar)
+
+                                preds_df['predicted_RAG_reason'] = predicted_reasons
+                                preds_df['actual_RAG_reason'] = actual_reasons
+                            else:
+                                # length mismatch: add empty columns to keep schema consistent
+                                preds_df['predicted_RAG_reason'] = ''
+                                preds_df['actual_RAG_reason'] = ''
+                        else:
+                            preds_df['predicted_RAG_reason'] = ''
+                            preds_df['actual_RAG_reason'] = ''
+                    except Exception:
+                        preds_df['predicted_RAG_reason'] = ''
+                        preds_df['actual_RAG_reason'] = ''
                     preds_csv_path = os.path.join('artifacts', 'predictions.csv')
                     preds_df.to_csv(preds_csv_path, index=False)
                     logging.info(f"Saved predictions to {preds_csv_path}")
