@@ -139,12 +139,32 @@ with left:
     # Predict button
     st.markdown('### Run prediction')
     st.write('Run the prediction pipeline against the raw input and regenerate visuals for demo.')
+    # File uploader: if user uploads a CSV, save it to uploads/data.csv and use it as input
+    uploaded_path = None
+    uploaded_file = st.file_uploader('Upload CSV for prediction (optional)', type=['csv'])
+    if uploaded_file is not None:
+        try:
+            uploads_dir = Path('uploads')
+            uploads_dir.mkdir(parents=True, exist_ok=True)
+            # Save uploaded file to disk so pipeline (which runs as subprocess) can access it
+            target = uploads_dir / 'data.csv'
+            # If a file already exists, allow overwrite
+            with open(target, 'wb') as f:
+                f.write(uploaded_file.getbuffer())
+            st.success(f'Saved uploaded file to {str(target)}')
+            uploaded_path = str(target)
+        except Exception as ex:
+            st.error(f'Failed to save uploaded file: {ex}')
     if st.button('Predict now'):
         with st.spinner('Running prediction pipeline...'):
             root = Path.cwd()
             # call the predict pipeline script using the Python executable
             try:
-                proc = subprocess.run([sys.executable, str(root / 'src' / 'pipeline' / 'predict_pipeline.py')], capture_output=True, text=True)
+                predict_script = str(root / 'src' / 'pipeline' / 'predict_pipeline.py')
+                cmd = [sys.executable, predict_script]
+                if uploaded_path:
+                    cmd += ['--input', uploaded_path]
+                proc = subprocess.run(cmd, capture_output=True, text=True)
                 st.write('Prediction exit code:', proc.returncode)
                 if proc.stdout:
                     st.text(proc.stdout[:10000])
