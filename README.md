@@ -4,13 +4,13 @@
 
 This project automates the end-to-end machine learning workflow from data ingestion to transformation to model training and predictions.
 
-1. Overview
+**1. Overview :**
     The goal is to predict project progress or RAG status(Red, Amber and Green) based on the project metadata that is fetched from JIRA.
 
-2. Pipleline Architecture
+**2. Pipleline Architecture :**
     Raw CSV → Data Ingestion (src/components/data_ingestion.py) → Data Transformation (src/components/data_transformation.py) → Model Training (src/components/model_trainer.py) → Prediction (with Reasons) (src/pipeline/predict_pipeline.py)
 
-3. How to Run 
+**3. How to Run :**
     # Step 1: Create environment 
     conda create -p venv python=3.8 -y 
     conda activate venv/ 
@@ -21,7 +21,7 @@ This project automates the end-to-end machine learning workflow from data ingest
     # Step 3: Run the pipeline 
     python src/components/data_ingestion.py
 
-4. Output Artifacts
+**4. Output Artifacts :**
 
 data.csv -> Cleaned raw input data
 train.csv, test.csv	-> Split datasets for ML
@@ -39,7 +39,7 @@ artifacts/
 ├── model_comparison.png
 └── prediction_output.csv
 
-5. Tech Stack
+**5. Tech Stack :**
 Python 3.8+
 Scikit-learn, Pandas, NumPy
 CatBoost, RandomForest
