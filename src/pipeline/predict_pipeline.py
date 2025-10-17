@@ -240,7 +240,27 @@ def predict_with_reasons(input_csv: str = None, output_csv: str = None):
         pid = df[id_col].iloc[i] if id_col else i
         pred_label = preds[i] if preds is not None else None
         prob = float(pred_probs[i]) if pred_probs is not None and pred_probs[i] is not None else None
-        actual_rag_reason = df['RAG Reason + Observations'].iloc[i] if 'RAG Reason + Observations' in df.columns else ''
+        
+        actual_rag_reason = ''
+        reason_parts = []
+
+        # Get "RAG Reason" if available and not empty
+        if 'RAG Reason' in df.columns:
+            val = df['RAG Reason'].iloc[i]
+        if pd.notna(val) and str(val).strip():
+            reason_parts.append(str(val).strip())
+
+        # Get "RAG Reason + Observations" if available and not empty
+        if 'RAG Reason + Observations' in df.columns:
+            val = df['RAG Reason + Observations'].iloc[i]
+        if pd.notna(val) and str(val).strip():
+            reason_parts.append(str(val).strip())
+
+        # Join both parts into a single string
+        actual_rag_reason = ' | '.join(reason_parts) if reason_parts else ''
+
+        
+        
         raw_row = raw_rows.iloc[i] if id_col is None else raw_rows.drop(columns=[id_col], errors='ignore').iloc[i]
         predicted_reason = reason_from_row(df.iloc[i])
         if not predicted_reason:
