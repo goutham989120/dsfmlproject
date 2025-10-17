@@ -27,6 +27,8 @@ from sklearn.metrics import (
     precision_recall_fscore_support,
 )
 from sklearn.exceptions import UndefinedMetricWarning
+# Globally ignore sklearn's UndefinedMetricWarning (common when no positive samples exist for a class)
+warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
 from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split
 from sklearn.preprocessing import LabelEncoder, label_binarize
 from sklearn.neighbors import KNeighborsRegressor
@@ -69,6 +71,7 @@ class ModelTrainerConfig:
     confusion_matrix_path = os.path.join("artifacts", "confusion_matrix.png")
     classification_report_csv = os.path.join("artifacts", "classification_report.csv")
     classification_metrics_csv = os.path.join("artifacts", "classification_metrics.csv")
+    summary_slide_path = os.path.join("artifacts", "summary_slide.png")
 
 
 class ModelTrainer:
@@ -121,7 +124,7 @@ class ModelTrainer:
             logging.error("Error during train/test preparation")
             raise CustomException(e, sys)
 
-    def initiate_model_trainer(self, train_array, test_array, tune_hyperparams=True):
+    def initiate_model_trainer(self, train_array, test_array, tune_hyperparams=True, console_summary: bool = False):
         try:
             logging.info("Splitting training and test input data")
             X_train, y_train, X_test, y_test = (
@@ -426,6 +429,138 @@ class ModelTrainer:
                 logging.info(f"Saved model comparison plot to {self.model_trainer_config.comparison_plot_path}")
             except Exception as e:
                 logging.warning(f"Failed to save model comparison plot: {e}")
+
+            # ==================== SUMMARY SLIDE (single image) ====================
+            try:
+                # Prepare subplots: 2x2
+                fig, axes = plt.subplots(2,2, figsize=(14,10))
+
+                # Top-left: model comparison
+                ax0 = axes[0,0]
+                models_list = list(sorted_scores.keys())
+                scores_list = list(sorted_scores.values())
+                ax0.bar(models_list, scores_list, color='skyblue')
+                ax0.set_title('Model Comparison')
+                ax0.set_ylabel(ylabel)
+                ax0.tick_params(axis='x', rotation=45)
+
+                # Top-right: ROC (reuse existing roc if available)
+                ax1 = axes[0,1]
+                try:
+                    if is_classification and 'y_score' in locals() and y_score is not None:
+                        if (hasattr(y_score, 'shape') and (len(y_score.shape) > 1 and y_score.shape[1] > 1)):
+                            # multiclass: plot micro + per-class
+                            y_test_b = label_binarize(y_test_enc_safe, classes=range(y_score.shape[1]))
+                            fpr = dict(); tpr = dict(); roc_auc = dict()
+                            for i in range(y_score.shape[1]):
+                                fpr[i], tpr[i], _ = roc_curve(y_test_b[:, i], y_score[:, i])
+                                roc_auc[i] = auc(fpr[i], tpr[i])
+                            fpr['micro'], tpr['micro'], _ = roc_curve(y_test_b.ravel(), y_score.ravel())
+                            roc_auc['micro'] = auc(fpr['micro'], tpr['micro'])
+                            ax1.plot(fpr['micro'], tpr['micro'], label=f'micro (AUC={roc_auc["micro"]:.2f})', color='deeppink', linestyle=':')
+                            for i in range(y_score.shape[1]):
+                                ax1.plot(fpr[i], tpr[i], lw=1.5, label=f'Class {i} (AUC={roc_auc[i]:.2f})')
+                        else:
+                            fpr, tpr, _ = roc_curve(y_test_enc_safe, y_score[:,1] if y_score.ndim>1 else y_score)
+                            roc_auc = auc(fpr, tpr)
+                            ax1.plot(fpr, tpr, color='darkorange', lw=2, label=f'AUC={roc_auc:.2f}')
+                        ax1.plot([0,1],[0,1],'k--', lw=1)
+                        ax1.set_title('ROC Curve')
+                        ax1.set_xlabel('False Positive Rate')
+                        ax1.set_ylabel('True Positive Rate')
+                        ax1.legend(loc='lower right', fontsize='small')
+                    else:
+                        ax1.text(0.5,0.5,'ROC not available', ha='center', va='center')
+                        ax1.set_title('ROC Curve')
+                except Exception:
+                    ax1.text(0.5,0.5,'ROC not available', ha='center', va='center')
+                    ax1.set_title('ROC Curve')
+
+                # Bottom-left: confusion matrix
+                ax2 = axes[1,0]
+                try:
+                    disp.plot(ax=ax2, cmap='Blues', colorbar=False)
+                    ax2.set_title('Confusion Matrix')
+                    ax2.set_xlabel('Predicted RAG')
+                    ax2.set_ylabel('Actual RAG')
+                    for tick in ax2.get_xticklabels():
+                        tick.set_rotation(45)
+                except Exception:
+                    ax2.text(0.5,0.5,'Confusion matrix not available', ha='center', va='center')
+                    ax2.set_title('Confusion Matrix')
+
+                # Bottom-right: note pointing to metrics CSV
+                ax3 = axes[1,1]
+                ax3.axis('off')
+                try:
+                    note = f"Detailed metrics saved to:\n{self.model_trainer_config.classification_metrics_csv}"
+                    ax3.text(0.5,0.5, note, ha='center', va='center', fontsize=10)
+                    ax3.set_title('Classification Metrics (see CSV)')
+                except Exception:
+                    ax3.text(0.5,0.5,'Detailed metrics saved to classification_metrics.csv', ha='center', va='center')
+                    ax3.set_title('Classification Metrics (see CSV)')
+
+                plt.tight_layout()
+                os.makedirs(os.path.dirname(self.model_trainer_config.summary_slide_path), exist_ok=True)
+                fig.savefig(self.model_trainer_config.summary_slide_path, dpi=150)
+                plt.close(fig)
+                logging.info(f"Saved summary slide to {self.model_trainer_config.summary_slide_path}")
+            except Exception as e:
+                logging.warning(f"Failed to create summary slide: {e}")
+
+            # If console_summary requested, print only the model comparison, confusion matrix and ROC AUC
+            if console_summary:
+                try:
+                    print("\n=== Model comparison (test scores) ===")
+                    sorted_scores = dict(sorted(test_scores.items(), key=lambda item: item[1], reverse=True))
+                    for name, sc in sorted_scores.items():
+                        print(f"{name}: {sc:.4f}")
+
+                    print("\n=== Confusion Matrix ===")
+                    try:
+                        best = best_model
+                        y_pred = best.predict(X_test)
+                        try:
+                            labels_list = list(le.classes_)
+                            try:
+                                y_pred_enc = le.transform(y_pred.astype(str))
+                            except Exception:
+                                y_pred_enc = y_pred
+                            cm_local = confusion_matrix(y_test_enc, y_pred_enc)
+                            print("Label mapping:")
+                            for i, lbl in enumerate(labels_list):
+                                print(f"{i}: {lbl}")
+                            print(cm_local)
+                        except Exception:
+                            cm_local = confusion_matrix(y_test, y_pred)
+                            print(cm_local)
+                    except Exception as e:
+                        print(f"Could not compute confusion matrix: {e}")
+
+                    print("\n=== ROC AUC ===")
+                    try:
+                        y_score_local = None
+                        if hasattr(best_model, 'predict_proba'):
+                            y_score_local = best_model.predict_proba(X_test)
+                        elif hasattr(best_model, 'decision_function'):
+                            y_score_local = best_model.decision_function(X_test)
+                        if y_score_local is not None:
+                            n_classes = y_score_local.shape[1] if len(getattr(y_score_local, 'shape', [])) > 1 else 1
+                            if n_classes == 1:
+                                fpr, tpr, _ = roc_curve(y_test_enc if 'y_test_enc' in locals() else y_test, y_score_local[:,1] if getattr(y_score_local, 'ndim', 1)>1 else y_score_local)
+                                roc_auc_local = auc(fpr, tpr)
+                                print(f"AUC: {roc_auc_local:.4f}")
+                            else:
+                                y_test_b_local = label_binarize(y_test_enc if 'y_test_enc' in locals() else y_test, classes=range(n_classes))
+                                for i in range(n_classes):
+                                    fpr, tpr, _ = roc_curve(y_test_b_local[:, i], y_score_local[:, i])
+                                    print(f"Class {i} AUC: {auc(fpr, tpr):.4f}")
+                        else:
+                            print("ROC not available (model provides no probability/decision scores)")
+                    except Exception as e:
+                        print(f"Could not compute ROC AUC: {e}")
+                except Exception:
+                    pass
 
             return best_model_name, test_scores[best_model_name]
 
