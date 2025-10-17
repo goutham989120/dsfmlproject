@@ -38,28 +38,38 @@ def load_pickle(path: str):
         try:
             return pickle.load(f)
         except ModuleNotFoundError as mnf:
-            # Typical case: the file was serialized with `dill` but the
-            # environment doesn't have `dill` installed. Try to import dill
-            # dynamically and use it to load the file.
-            if 'dill' in str(mnf) or getattr(mnf, 'name', None) == 'dill':
-                try:
-                    import dill as _dill
-                    f.seek(0)
-                    return _dill.load(f)
-                except Exception:
-                    # Re-raise the original error if dill import/load fails
-                    raise
-            raise
-        except Exception:
-            # Generic fallback: try dill in case the object requires it.
+            # The pickle.load failed because the file references a module
+            # that's not available in the environment (commonly 'dill').
+            # Try to import dill and use it; if dill isn't installed, raise a
+            # helpful CustomException instructing the user to install it.
+            try:
+                import dill as _dill
+            except Exception as ie:
+                raise CustomException(
+                    f"Failed to deserialize {path}: the file requires 'dill' but the package is not installed.\n"
+                    f"Install it with: pip install dill",
+                    sys,
+                ) from ie
+            try:
+                f.seek(0)
+                return _dill.load(f)
+            except Exception as e:
+                raise CustomException(e, sys)
+        except Exception as e:
+            # Generic fallback: the object might still require dill to
+            # deserialize. Try dill if available, otherwise wrap the error.
             try:
                 import dill as _dill
                 f.seek(0)
                 return _dill.load(f)
-            except Exception:
-                # If dill isn't available or loading fails, re-raise the
-                # original exception so callers see the real reason.
-                raise
+            except ModuleNotFoundError:
+                raise CustomException(
+                    f"Failed to deserialize {path}: unknown error and 'dill' is not installed.\n"
+                    f"Try installing dill: pip install dill\nOriginal error: {e}",
+                    sys,
+                )
+            except Exception as e2:
+                raise CustomException(e2, sys)
 
 
 def _strip_percent(x):
