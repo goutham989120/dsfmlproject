@@ -37,9 +37,29 @@ def load_pickle(path: str):
     with open(path, 'rb') as f:
         try:
             return pickle.load(f)
+        except ModuleNotFoundError as mnf:
+            # Typical case: the file was serialized with `dill` but the
+            # environment doesn't have `dill` installed. Try to import dill
+            # dynamically and use it to load the file.
+            if 'dill' in str(mnf) or getattr(mnf, 'name', None) == 'dill':
+                try:
+                    import dill as _dill
+                    f.seek(0)
+                    return _dill.load(f)
+                except Exception:
+                    # Re-raise the original error if dill import/load fails
+                    raise
+            raise
         except Exception:
-            f.seek(0)
-            return pickle.load(f)
+            # Generic fallback: try dill in case the object requires it.
+            try:
+                import dill as _dill
+                f.seek(0)
+                return _dill.load(f)
+            except Exception:
+                # If dill isn't available or loading fails, re-raise the
+                # original exception so callers see the real reason.
+                raise
 
 
 def _strip_percent(x):
