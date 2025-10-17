@@ -1,6 +1,7 @@
 import os
 import sys
 from dataclasses import dataclass
+import warnings
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -13,12 +14,19 @@ from sklearn.ensemble import (
     RandomForestRegressor,
     StackingRegressor,
     RandomForestClassifier,
-    AdaBoostClassifier
 )
 from sklearn.linear_model import LinearRegression, LogisticRegression, RidgeCV
-from sklearn.metrics import r2_score, accuracy_score
+from sklearn.metrics import (
+    r2_score,
+    accuracy_score,
+    roc_curve,
+    auc,
+    confusion_matrix,
+    ConfusionMatrixDisplay,
+)
+from sklearn.exceptions import UndefinedMetricWarning
 from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, label_binarize
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
 
@@ -55,6 +63,8 @@ class ModelTrainerConfig:
     model_scores_csv = os.path.join("artifacts", "model_scores.csv")
     train_csv = os.path.join("artifacts", "train.csv")
     test_csv = os.path.join("artifacts", "test.csv")
+    roc_plot_path = os.path.join("artifacts", "roc_curve.png")
+    confusion_matrix_path = os.path.join("artifacts", "confusion_matrix.png")
 
 
 class ModelTrainer:
@@ -63,31 +73,42 @@ class ModelTrainer:
 
     def prepare_train_test(self, df: pd.DataFrame, target_col='RAG', test_size=0.2, random_state=42):
         """
-        Splits dataframe into train/test and preserves actual RAG reason
+        Splits dataframe into train/test and preserves actual RAG reason.
+        Guarantees that every class appears at least once in test set.
         """
         try:
             if target_col not in df.columns:
                 raise CustomException(f"Target column '{target_col}' not found in dataframe", sys)
 
-            # Ensure actual_RAG_reason is always present
-            if 'RAG Reason + Observations' in df.columns:
-                df['actual_RAG_reason'] = df['RAG Reason + Observations']
-            else:
-                df['actual_RAG_reason'] = ''
+            df['actual_RAG_reason'] = df.get('RAG Reason + Observations', '')
 
-            # Stratify split if target has multiple classes
             stratify_col = df[target_col] if df[target_col].nunique() > 1 else None
-            train_df, test_df = train_test_split(df, test_size=test_size, stratify=stratify_col, random_state=random_state)
 
-            # Save train/test for pipeline use
+            if stratify_col is not None:
+                class_counts = df[target_col].value_counts()
+                if class_counts.min() < 2:
+                    logging.warning("Some classes have only 1 sample, stratified split not possible. Using non-stratified split.")
+                    stratify_col = None
+
+            train_df, test_df = train_test_split(
+                df, test_size=test_size, stratify=stratify_col, random_state=random_state
+            )
+
+            # Ensure all classes appear in test set
+            missing_classes = set(df[target_col].unique()) - set(test_df[target_col].unique())
+            if missing_classes:
+                logging.info(f"Adjusting test set to include missing classes: {missing_classes}")
+                for cls in missing_classes:
+                    row_to_move = train_df[train_df[target_col] == cls].iloc[0]
+                    test_df = pd.concat([test_df, row_to_move.to_frame().T])
+                    train_df = train_df.drop(row_to_move.name)
+
             os.makedirs(os.path.dirname(self.model_trainer_config.train_csv), exist_ok=True)
             train_df.to_csv(self.model_trainer_config.train_csv, index=False)
             test_df.to_csv(self.model_trainer_config.test_csv, index=False)
-
             logging.info(f"Train CSV saved to {self.model_trainer_config.train_csv} ({len(train_df)} rows)")
             logging.info(f"Test CSV saved to {self.model_trainer_config.test_csv} ({len(test_df)} rows)")
 
-            # Return arrays for model training
             train_array = train_df.drop(columns=['actual_RAG_reason']).values
             test_array = test_df.drop(columns=['actual_RAG_reason']).values
             return train_array, test_array
@@ -173,7 +194,6 @@ class ModelTrainer:
                 if lightgbm_available:
                     models["LightGBM"] = LGBMRegressor()
 
-                # Add Stacking Ensemble
                 base_estimators = [
                     ('cat', CatBoostRegressor(iterations=500, depth=8, learning_rate=0.03, verbose=0)),
                     ('xgb', XGBRegressor(n_estimators=500, learning_rate=0.05, max_depth=6, random_state=42)),
@@ -248,7 +268,116 @@ class ModelTrainer:
             scores_df.to_csv(self.model_trainer_config.model_scores_csv, index=False)
             logging.info(f"Saved model scores to {self.model_trainer_config.model_scores_csv}")
 
-            # ==================== PLOT COMPARISON ====================
+            # ==================== CONFUSION MATRIX & ROC ====================
+            try:
+                if is_classification:
+                    best = best_model
+                    y_pred = best.predict(X_test)
+
+                    # Suppress UndefinedMetricWarning
+                    with warnings.catch_warnings():
+                        warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
+
+                        # Safe LabelEncoder for confusion matrix
+                        try:
+                            le_cm = LabelEncoder()
+                            le_cm.fit(np.concatenate([y_test_enc, y_pred.astype(str)]))
+                            y_test_enc_safe = le_cm.transform(y_test_enc)
+                            try:
+                                y_pred_safe = le_cm.transform(y_pred.astype(str))
+                            except Exception:
+                                y_pred_safe = y_pred
+                            labels = le_cm.classes_
+                        except Exception:
+                            y_test_enc_safe = y_test_enc
+                            y_pred_safe = y_pred
+                            labels = np.unique(np.concatenate([y_test_enc_safe, y_pred_safe]))
+
+                        # Confusion matrix
+                        cm = confusion_matrix(y_test_enc_safe, y_pred_safe, labels=range(len(labels)))
+                        disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=labels)
+                        fig_cm, ax_cm = plt.subplots(figsize=(8,6))
+                        disp.plot(ax=ax_cm, cmap='Blues', colorbar=False)
+                        plt.title('Confusion Matrix')
+                        # Label axes for clarity
+                        ax_cm.set_xlabel('Predicted RAG')
+                        ax_cm.set_ylabel('Actual RAG')
+                        # Rotate tick labels for readability
+                        if labels is not None and len(labels) > 0:
+                            ax_cm.set_xticklabels(labels, rotation=45, ha='right')
+                            ax_cm.set_yticklabels(labels, rotation=0)
+                        # Annotate mapping: encoded integer -> RAG label
+                        try:
+                            mapping = {}
+                            if 'le' in locals():
+                                # use the original label encoder if available
+                                mapping = {i: str(lbl) for i, lbl in enumerate(list(le.classes_))}
+                            else:
+                                mapping = {i: str(lbl) for i, lbl in enumerate(labels)}
+                            mapping_lines = [f"{k}: {v}" for k, v in mapping.items()]
+                            mapping_str = "\n".join(mapping_lines)
+                            # place the mapping in a small textbox on the figure
+                            fig_cm.text(0.99, 0.01, mapping_str, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round', facecolor='white', alpha=0.7), transform=fig_cm.transFigure)
+                        except Exception:
+                            pass
+                        plt.tight_layout()
+                        os.makedirs(os.path.dirname(self.model_trainer_config.confusion_matrix_path), exist_ok=True)
+                        plt.savefig(self.model_trainer_config.confusion_matrix_path)
+                        plt.close(fig_cm)
+                        logging.info(f"Saved confusion matrix to {self.model_trainer_config.confusion_matrix_path}")
+
+                        # ROC curve (binary/multiclass)
+                        try:
+                            if len(np.unique(y_test_enc_safe)) > 1:
+                                y_score = None
+                                if hasattr(best, 'predict_proba'):
+                                    y_score = best.predict_proba(X_test)
+                                elif hasattr(best, 'decision_function'):
+                                    y_score = best.decision_function(X_test)
+
+                                if y_score is not None:
+                                    n_classes = y_score.shape[1] if len(y_score.shape) > 1 else 1
+                                    if n_classes == 1:
+                                        fpr, tpr, _ = roc_curve(y_test_enc_safe, y_score[:, 1] if y_score.ndim>1 else y_score)
+                                        roc_auc = auc(fpr, tpr)
+                                        plt.figure(figsize=(8,6))
+                                        plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (area = {roc_auc:.2f})')
+                                        plt.plot([0,1],[0,1], color='navy', lw=1, linestyle='--')
+                                        plt.xlabel('False Positive Rate'); plt.ylabel('True Positive Rate')
+                                        plt.title('Receiver Operating Characteristic')
+                                        plt.legend(loc='lower right')
+                                        plt.tight_layout()
+                                        os.makedirs(os.path.dirname(self.model_trainer_config.roc_plot_path), exist_ok=True)
+                                        plt.savefig(self.model_trainer_config.roc_plot_path)
+                                        plt.close()
+                                        logging.info(f"Saved ROC curve to {self.model_trainer_config.roc_plot_path}")
+                                    else:
+                                        y_test_b = label_binarize(y_test_enc_safe, classes=range(n_classes))
+                                        fpr = {}; tpr = {}; roc_auc = {}
+                                        for i in range(n_classes):
+                                            fpr[i], tpr[i], _ = roc_curve(y_test_b[:, i], y_score[:, i])
+                                            roc_auc[i] = auc(fpr[i], tpr[i])
+                                        fpr['micro'], tpr['micro'], _ = roc_curve(y_test_b.ravel(), y_score.ravel())
+                                        roc_auc['micro'] = auc(fpr['micro'], tpr['micro'])
+                                        plt.figure(figsize=(8,6))
+                                        plt.plot(fpr['micro'], tpr['micro'], label=f'micro-average ROC (area = {roc_auc["micro"]:.2f})', color='deeppink', linestyle=':', linewidth=4)
+                                        for i in range(n_classes):
+                                            plt.plot(fpr[i], tpr[i], lw=2, label=f'Class {i} (area = {roc_auc[i]:.2f})')
+                                        plt.plot([0,1],[0,1],'k--',lw=1)
+                                        plt.xlabel('False Positive Rate'); plt.ylabel('True Positive Rate')
+                                        plt.title('Multiclass ROC')
+                                        plt.legend(loc='lower right')
+                                        plt.tight_layout()
+                                        os.makedirs(os.path.dirname(self.model_trainer_config.roc_plot_path), exist_ok=True)
+                                        plt.savefig(self.model_trainer_config.roc_plot_path)
+                                        plt.close()
+                                        logging.info(f"Saved ROC curve to {self.model_trainer_config.roc_plot_path}")
+                        except Exception as e:
+                            logging.warning(f"Failed to generate ROC curve: {e}")
+            except Exception as e:
+                logging.warning(f"Failed to generate confusion matrix / ROC: {e}")
+
+            # ==================== MODEL COMPARISON PLOT ====================
             try:
                 plt.figure(figsize=(10,6))
                 sorted_scores = dict(sorted(test_scores.items(), key=lambda item: item[1], reverse=True))
