@@ -55,6 +55,7 @@ preprocessor.pkl ->	Saved preprocessing pipeline
 model.pkl ->	Best-trained model
 prediction_output.csv ->	Predicted RAG statuses with reasons
 
+```
 artifacts/
 ├── data.csv
 ├── train.csv
@@ -64,7 +65,7 @@ artifacts/
 ├── model_scores.csv
 ├── model_comparison.png
 └── prediction_output.csv
-
+```
 **6. Tech Stack :**
 Python 3.8+
 Scikit-learn, Pandas, NumPy
