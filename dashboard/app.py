@@ -164,12 +164,48 @@ with left:
                 cmd = [sys.executable, predict_script]
                 if uploaded_path:
                     cmd += ['--input', uploaded_path]
-                proc = subprocess.run(cmd, capture_output=True, text=True)
-                st.write('Prediction exit code:', proc.returncode)
-                if proc.stdout:
-                    st.text(proc.stdout[:10000])
-                if proc.stderr:
-                    st.text(proc.stderr[:10000])
+
+                # Run process and stream stdout/stderr to the UI so users see progress.
+                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                placeholder = st.empty()
+                lines = []
+                import time
+                start = time.time()
+                timeout_seconds = 600  # 10 minutes max by default
+                killed = False
+                while True:
+                    if proc.stdout is None:
+                        break
+                    line = proc.stdout.readline()
+                    if line:
+                        lines.append(line)
+                        # Keep the displayed output reasonably sized
+                        display_text = ''.join(lines[-1000:])
+                        placeholder.text(display_text)
+                    if proc.poll() is not None:
+                        # process finished
+                        # read remaining
+                        remainder = proc.stdout.read()
+                        if remainder:
+                            lines.append(remainder)
+                            placeholder.text(''.join(lines[-1000:]))
+                        break
+                    # timeout guard
+                    if (time.time() - start) > timeout_seconds:
+                        try:
+                            proc.kill()
+                            killed = True
+                        except Exception:
+                            pass
+                        lines.append('\n[Process killed after timeout]')
+                        placeholder.text(''.join(lines[-1000:]))
+                        break
+                    time.sleep(0.1)
+
+                retcode = proc.poll()
+                st.write('Prediction exit code:', retcode)
+                if killed:
+                    st.warning('Prediction process was killed due to timeout.')
             except Exception as ex:
                 st.error('Failed to run prediction pipeline: ' + str(ex))
             # regenerate visuals
