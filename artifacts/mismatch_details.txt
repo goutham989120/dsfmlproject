@@ -1,0 +1,6 @@
+Merged rows: 45, correct: 39, accuracy: 0.8667
+Actual Amber: total=21, correct=21, accuracy=1.0000
+Actual Green: total=16, correct=13, accuracy=0.8125
+ Misclassified IDs (sample up to 20): DSFFLOW-3381, DSFFLOW-2384, DSFFLOW-206
+Actual Red: total=8, correct=5, accuracy=0.6250
+ Misclassified IDs (sample up to 20): DSFFLOW-2529, DSFFLOW-741, DSFFLOW-2828

@@ -342,6 +342,22 @@ def predict_with_reasons(input_csv: str = None, output_csv: str = None):
     except Exception as e:
         LOGGER.warning(f"Failed to write compact predictions CSV: {e}")
 
+    # Also save a labeled confusion matrix derived from the compact predictions for quick comparison
+    try:
+        if not compact_df.empty and 'predicted' in compact_df.columns and 'actual' in compact_df.columns:
+            preds = compact_df['predicted'].astype(str).str.strip()
+            actuals = compact_df['actual'].astype(str).str.strip()
+            labels = sorted(list(set(actuals.tolist() + preds.tolist())))
+            import pandas as _pd
+            from sklearn.metrics import confusion_matrix as _cm
+            cm = _cm(actuals, preds, labels=labels)
+            cm_df = _pd.DataFrame(cm, index=labels, columns=labels)
+            cm_path = os.path.join('artifacts', 'confusion_matrix_from_predictions.csv')
+            cm_df.to_csv(cm_path)
+            LOGGER.info(f"Saved confusion matrix derived from predictions to {cm_path}")
+    except Exception as e:
+        LOGGER.warning(f"Failed to save confusion matrix from predictions: {e}")
+
     return out_df
 
 

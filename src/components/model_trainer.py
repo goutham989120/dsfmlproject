@@ -71,6 +71,8 @@ class ModelTrainerConfig:
     confusion_matrix_path = os.path.join("artifacts", "confusion_matrix.png")
     classification_report_csv = os.path.join("artifacts", "classification_report.csv")
     classification_metrics_csv = os.path.join("artifacts", "classification_metrics.csv")
+    model_bundle_path = os.path.join("artifacts", "model_bundle.pkl")
+    confusion_matrix_csv = os.path.join("artifacts", "confusion_matrix.csv")
     summary_slide_path = os.path.join("artifacts", "summary_slide.png")
 
 
@@ -268,6 +270,16 @@ class ModelTrainer:
             logging.info(f"✅ Best model: {best_model_name} (test score: {test_scores[best_model_name]:.4f})")
 
             save_object(self.model_trainer_config.trained_model_file_path, best_model)
+            # Also save a bundle with model + label encoder (if classification)
+            try:
+                bundle = {'model': best_model}
+                if is_classification and 'le' in locals():
+                    bundle['label_encoder'] = le
+                os.makedirs(os.path.dirname(self.model_trainer_config.model_bundle_path), exist_ok=True)
+                save_object(self.model_trainer_config.model_bundle_path, bundle)
+                logging.info(f"Saved model bundle to {self.model_trainer_config.model_bundle_path}")
+            except Exception as e:
+                logging.warning(f"Failed to save model bundle: {e}")
 
             # ==================== SAVE MODEL SCORES ====================
             os.makedirs(os.path.dirname(self.model_trainer_config.model_scores_csv), exist_ok=True)
@@ -332,6 +344,24 @@ class ModelTrainer:
                         plt.savefig(self.model_trainer_config.confusion_matrix_path)
                         plt.close(fig_cm)
                         logging.info(f"Saved confusion matrix to {self.model_trainer_config.confusion_matrix_path}")
+
+                        # Save labeled confusion matrix to CSV (rows=actual, cols=predicted)
+                        try:
+                            # Prefer original label encoder to get textual labels
+                            n = cm.shape[0]
+                            try:
+                                if is_classification and 'le' in locals():
+                                    text_labels = list(le.inverse_transform(list(range(n))))
+                                else:
+                                    text_labels = [str(x) for x in labels]
+                            except Exception:
+                                text_labels = [str(x) for x in labels]
+                            cm_df = pd.DataFrame(cm, index=text_labels, columns=text_labels)
+                            os.makedirs(os.path.dirname(self.model_trainer_config.confusion_matrix_csv), exist_ok=True)
+                            cm_df.to_csv(self.model_trainer_config.confusion_matrix_csv)
+                            logging.info(f"Saved confusion matrix CSV to {self.model_trainer_config.confusion_matrix_csv}")
+                        except Exception as e:
+                            logging.warning(f"Failed to save confusion matrix CSV: {e}")
 
                         # Classification metrics: precision, recall, f1 (per-class and averages)
                         try:

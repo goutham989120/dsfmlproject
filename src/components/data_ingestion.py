@@ -81,3 +81,53 @@ if __name__ == "__main__":
         predict_with_reasons(input_csv=raw_input_path)
     except Exception as e:
         logging.info(f"Prediction pipeline skipped or failed: {e}")
+    
+    # After predictions are written, run the comparison script to generate compare files
+    try:
+        import subprocess
+        # run compare_preds.py using the same Python executable
+        compare_script = os.path.join(os.getcwd(), 'compare_preds.py')
+        if os.path.exists(compare_script):
+            logging.info(f"Running compare script: {compare_script}")
+            completed = subprocess.run([sys.executable, compare_script], check=False, capture_output=True, text=True)
+            logging.info(f"compare_preds.py exit code: {completed.returncode}")
+            if completed.stdout:
+                logging.info('compare_preds.py output:\n' + completed.stdout)
+            if completed.stderr:
+                logging.warning('compare_preds.py errors:\n' + completed.stderr)
+        else:
+            logging.info(f"compare_preds.py not found at {compare_script}, skipping comparison step")
+    except Exception as e:
+        logging.warning(f"Failed to run compare_preds.py: {e}")
+    
+    # Also run mismatch analysis script to generate per-ID mismatch details
+    try:
+        analyze_script = os.path.join(os.getcwd(), 'analyze_mismatches.py')
+        if os.path.exists(analyze_script):
+            logging.info(f"Running analyze script: {analyze_script}")
+            completed2 = subprocess.run([sys.executable, analyze_script], check=False, capture_output=True, text=True)
+            logging.info(f"analyze_mismatches.py exit code: {completed2.returncode}")
+            if completed2.stdout:
+                logging.info('analyze_mismatches.py output:\n' + completed2.stdout)
+            if completed2.stderr:
+                logging.warning('analyze_mismatches.py errors:\n' + completed2.stderr)
+        else:
+            logging.info(f"analyze_mismatches.py not found at {analyze_script}, skipping mismatch analysis")
+    except Exception as e:
+        logging.warning(f"Failed to run analyze_mismatches.py: {e}")
+
+    # Generate prediction-derived confusion matrix PNG
+    try:
+        gen_script = os.path.join(os.getcwd(), 'gen_pred_confusion_matrix.py')
+        if os.path.exists(gen_script):
+            logging.info(f"Running prediction CM generation script: {gen_script}")
+            completed3 = subprocess.run([sys.executable, gen_script], check=False, capture_output=True, text=True)
+            logging.info(f"gen_pred_confusion_matrix.py exit code: {completed3.returncode}")
+            if completed3.stdout:
+                logging.info('gen_pred_confusion_matrix.py output:\n' + completed3.stdout)
+            if completed3.stderr:
+                logging.warning('gen_pred_confusion_matrix.py errors:\n' + completed3.stderr)
+        else:
+            logging.info(f"gen_pred_confusion_matrix.py not found at {gen_script}, skipping PNG generation")
+    except Exception as e:
+        logging.warning(f"Failed to run gen_pred_confusion_matrix.py: {e}")
