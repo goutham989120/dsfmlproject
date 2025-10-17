@@ -5,19 +5,19 @@ Confusion matrix derived from predictions.csv (rows=actual, cols=predicted):
 predicted  Amber  Green  Red
 actual                      
 Amber         21      0    0
-Green          2     13    1
-Red            3      0    5
+Green          2     12    2
+Red            2      1    5
 
 Loaded confusion_matrix.csv from training artifacts:
        Amber  Green  Red
 Amber     21      0    0
-Green      3     12    1
-Red        2      0    6
+Green      2     13    1
+Red        2      1    5
 
 Mapped training confusion matrix to textual labels using saved label encoder:
        Amber  Green  Red
 Amber     21      0    0
-Green      3     12    1
-Red        2      0    6
+Green      2     13    1
+Red        2      1    5
 
-Predictions-derived: total samples=45, total correct (diag sum)=39
+Predictions-derived: total samples=45, total correct (diag sum)=38

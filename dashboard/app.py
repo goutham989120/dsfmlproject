@@ -208,14 +208,47 @@ with left:
                     st.warning('Prediction process was killed due to timeout.')
             except Exception as ex:
                 st.error('Failed to run prediction pipeline: ' + str(ex))
-            # regenerate visuals
+            # regenerate visuals: run helper scripts and stream their output with timeouts
             scripts = [root / 'gen_pred_confusion_matrix.py', root / 'compare_preds.py', root / 'analyze_mismatches.py']
+            post_placeholder = st.empty()
             for s in scripts:
-                if s.exists():
-                    try:
-                        proc = subprocess.run([sys.executable, str(s)], capture_output=True, text=True)
-                    except Exception as ex:
-                        st.warning(f'Failed to run {s.name}: {ex}')
+                if not s.exists():
+                    continue
+                try:
+                    cmd = [sys.executable, str(s)]
+                    post_placeholder.markdown(f'**Running:** `{s.name}`')
+                    proc2 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                    out_lines = []
+                    import time
+                    start2 = time.time()
+                    # shorter timeout for post scripts
+                    timeout2 = 120
+                    while True:
+                        if proc2.stdout is None:
+                            break
+                        line2 = proc2.stdout.readline()
+                        if line2:
+                            out_lines.append(line2)
+                            post_placeholder.text(''.join(out_lines[-500:]))
+                        if proc2.poll() is not None:
+                            rem = proc2.stdout.read()
+                            if rem:
+                                out_lines.append(rem)
+                                post_placeholder.text(''.join(out_lines[-500:]))
+                            break
+                        if (time.time() - start2) > timeout2:
+                            try:
+                                proc2.kill()
+                                out_lines.append('\n[Script killed after timeout]')
+                                post_placeholder.text(''.join(out_lines[-500:]))
+                            except Exception:
+                                pass
+                            break
+                        time.sleep(0.05)
+                    ret2 = proc2.poll()
+                    post_placeholder.markdown(f'`{s.name}` exit code: {ret2}')
+                except Exception as ex:
+                    st.warning(f'Failed to run {s.name}: {ex}')
             # clear cache and rerun (safe)
             try:
                 st.cache_data.clear()

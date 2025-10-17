@@ -357,7 +357,11 @@ def predict_with_reasons(input_csv: str = None, output_csv: str = None):
     out_df = pd.DataFrame(results)
     os.makedirs(os.path.dirname(output_csv), exist_ok=True)
     out_df.to_csv(output_csv, index=False)
-    print(f"Saved predictions with reasons to {output_csv}")
+    print(f"Saved predictions with reasons to {output_csv}", flush=True)
+    try:
+        sys.stdout.flush()
+    except Exception:
+        pass
 
     # --- Compact predictions.csv (test rows only) ---
     compact_path = os.path.join('artifacts', 'predictions.csv')
@@ -400,6 +404,12 @@ def predict_with_reasons(input_csv: str = None, output_csv: str = None):
         LOGGER.info(f"Saved compact predictions to {compact_path} (rows={len(compact_df)})")
     except Exception as e:
         LOGGER.warning(f"Failed to write compact predictions CSV: {e}")
+    else:
+        print(f"Saved compact predictions to {compact_path}", flush=True)
+        try:
+            sys.stdout.flush()
+        except Exception:
+            pass
 
     # Also save a labeled confusion matrix derived from the compact predictions for quick comparison
     try:
@@ -414,6 +424,11 @@ def predict_with_reasons(input_csv: str = None, output_csv: str = None):
             cm_path = os.path.join('artifacts', 'confusion_matrix_from_predictions.csv')
             cm_df.to_csv(cm_path)
             LOGGER.info(f"Saved confusion matrix derived from predictions to {cm_path}")
+            print(f"Saved confusion matrix derived from predictions to {cm_path}", flush=True)
+            try:
+                sys.stdout.flush()
+            except Exception:
+                pass
     except Exception as e:
         LOGGER.warning(f"Failed to save confusion matrix from predictions: {e}")
 
@@ -429,6 +444,12 @@ if __name__ == '__main__':
 
     try:
         predict_with_reasons(input_csv=args.input, output_csv=args.output)
+        # Signal a clear completion marker for supervising processes (dashboard)
+        try:
+            print('PREDICTION_COMPLETE', flush=True)
+            sys.stdout.flush()
+        except Exception:
+            pass
     except Exception as e:
         print(f"Error during prediction: {e}")
         raise
