@@ -3,6 +3,16 @@ import sys
 import logging
 import pandas as pd
 import numpy as np
+from pathlib import Path
+
+# When this script is executed directly (python src/pipeline/predict_pipeline.py)
+# the interpreter's sys.path may not include the project root, which prevents
+# imports like `from src.exception import CustomException` from working.
+# Ensure the project root (two levels up from this file) is on sys.path.
+project_root = Path(__file__).resolve().parents[2]
+if str(project_root) not in sys.path:
+    # insert at front so local packages take precedence
+    sys.path.insert(0, str(project_root))
 
 from src.exception import CustomException
 from src.utils import save_object
@@ -119,12 +129,31 @@ def reason_from_row(row: pd.Series) -> str:
 
 
 def predict_with_reasons(input_csv: str = None, output_csv: str = None):
-    input_csv = input_csv or DEFAULT_INPUT
+    # If caller didn't provide an input, or provided path doesn't exist,
+    # allow using an uploaded dataset placed in `uploads/data.csv` or a local
+    # `data.csv` at repo root. This makes it easy to drop a CSV into the repo
+    # and run predictions without changing the script.
+    candidates = []
+    if input_csv:
+        candidates.append(input_csv)
+    # common upload locations
+    candidates.extend([
+        os.path.join('uploads', 'data.csv'),
+        os.path.join('.', 'data.csv'),
+        DEFAULT_INPUT,
+    ])
+
+    chosen_input = None
+    for c in candidates:
+        if c and os.path.exists(c):
+            chosen_input = c
+            break
+    if chosen_input is None:
+        raise CustomException(f"Input file not found. Tried: {candidates}", sys)
+    input_csv = chosen_input
     output_csv = output_csv or DEFAULT_OUTPUT
 
-    if not os.path.exists(input_csv):
-        raise CustomException(f"Input file not found: {input_csv}", sys)
-
+    LOGGER.info(f'Using input CSV: {input_csv}')
     df = pd.read_csv(input_csv)
 
     # preserve project id

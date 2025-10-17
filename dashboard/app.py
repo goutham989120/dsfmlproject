@@ -1,4 +1,5 @@
 import streamlit as st
+import sys
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -7,23 +8,76 @@ import os
 from io import BytesIO
 import pickle
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+import subprocess
+from pathlib import Path
 
 st.set_page_config(page_title='DSFML Project — Predictions Dashboard', layout='wide')
 
 st.title('DSFML Project — Predictions Dashboard')
 
-DATA_PATH = os.path.join('artifacts', 'predictions_with_reasons.csv')
+
+def safe_rerun():
+    """Attempt to rerun the Streamlit script in a backward-compatible way."""
+    try:
+        if hasattr(st, 'experimental_rerun'):
+            st.experimental_rerun()
+            return
+    except Exception:
+        pass
+    try:
+        import time
+        if hasattr(st, 'experimental_set_query_params'):
+            st.experimental_set_query_params(_refresh=int(time.time()))
+    except Exception:
+        pass
+    # fallback
+    try:
+        st.stop()
+    except Exception:
+        return
+
+# Dataset scope selector: All predictions vs test-only predictions
+scope = st.selectbox('Dataset scope', options=['All predictions', 'Test rows only'], index=0, help='Choose full predictions_with_reasons (All) or compact predictions.csv (Test rows only)')
 
 @st.cache_data
-def load_data(path=DATA_PATH):
+def load_full():
+    path = os.path.join('artifacts', 'predictions_with_reasons.csv')
     if not os.path.exists(path):
-        st.error(f'Predictions CSV not found at {path}. Run the pipeline first.')
         return pd.DataFrame()
-    df = pd.read_csv(path)
-    return df
+    return pd.read_csv(path)
 
-df = load_data()
+@st.cache_data
+def load_compact():
+    path = os.path.join('artifacts', 'predictions.csv')
+    if not os.path.exists(path):
+        return pd.DataFrame()
+    return pd.read_csv(path)
+
+if scope == 'All predictions':
+    df = load_full()
+else:
+    # compact predictions.csv has columns 'predicted' and 'actual' - normalize names
+    tmp = load_compact()
+    if not tmp.empty:
+        # try to map columns to expected names used downstream
+        col_map = {}
+        if 'predicted' in tmp.columns:
+            col_map['predicted'] = 'predicted_RAG'
+        if 'actual' in tmp.columns:
+            col_map['actual'] = 'actual_RAG'
+        # copy other helpful columns
+        if 'predicted_RAG_reason' in tmp.columns:
+            col_map['predicted_RAG_reason'] = 'predicted_RAG_reason'
+        if 'actual_RAG_reason' in tmp.columns:
+            col_map['actual_RAG_reason'] = 'actual_RAG_reason'
+        if 'predicted_probability' in tmp.columns:
+            col_map['predicted_probability'] = 'predicted_probability'
+        if 'predicted_EAC_date' in tmp.columns:
+            col_map['predicted_EAC_date'] = 'predicted_EAC_date'
+        df = tmp.rename(columns=col_map).copy()
+
 if df.empty:
+    st.error('No predictions found for selected scope. Run the pipeline or pick a different scope.')
     st.stop()
 
 # Try to compute basic metrics if actual_RAG present
@@ -82,6 +136,45 @@ left, right = st.columns([1, 3])
 
 with left:
     st.header('Filters')
+    # Predict button
+    st.markdown('### Run prediction')
+    st.write('Run the prediction pipeline against the raw input and regenerate visuals for demo.')
+    if st.button('Predict now'):
+        with st.spinner('Running prediction pipeline...'):
+            root = Path.cwd()
+            # call the predict pipeline script using the Python executable
+            try:
+                proc = subprocess.run([sys.executable, str(root / 'src' / 'pipeline' / 'predict_pipeline.py')], capture_output=True, text=True)
+                st.write('Prediction exit code:', proc.returncode)
+                if proc.stdout:
+                    st.text(proc.stdout[:10000])
+                if proc.stderr:
+                    st.text(proc.stderr[:10000])
+            except Exception as ex:
+                st.error('Failed to run prediction pipeline: ' + str(ex))
+            # regenerate visuals
+            scripts = [root / 'gen_pred_confusion_matrix.py', root / 'compare_preds.py', root / 'analyze_mismatches.py']
+            for s in scripts:
+                if s.exists():
+                    try:
+                        proc = subprocess.run([sys.executable, str(s)], capture_output=True, text=True)
+                    except Exception as ex:
+                        st.warning(f'Failed to run {s.name}: {ex}')
+            # clear cache and rerun (safe)
+            try:
+                st.cache_data.clear()
+            except Exception:
+                pass
+            # Use experimental_rerun if available, else fallback to setting a query param and stop
+            try:
+                st.experimental_rerun()
+            except Exception:
+                try:
+                    import time
+                    st.experimental_set_query_params(_refresh=int(time.time()))
+                except Exception:
+                    pass
+                st.stop()
     rag_vals = df['predicted_RAG'].dropna().unique().tolist() if 'predicted_RAG' in df.columns else []
     sel_rag = st.multiselect('Predicted RAG', options=rag_vals, default=rag_vals)
 
@@ -127,8 +220,11 @@ with right:
     with c2:
         st.subheader('Probability histogram')
         fig2, ax2 = plt.subplots()
-        sns.histplot(q['predicted_probability'].dropna(), bins=20, kde=True, ax=ax2)
-        st.pyplot(fig2)
+        if 'predicted_probability' in q.columns and q['predicted_probability'].dropna().shape[0] > 0:
+            sns.histplot(q['predicted_probability'].dropna(), bins=20, kde=True, ax=ax2)
+            st.pyplot(fig2)
+        else:
+            st.write('No predicted probability available for the selected dataset/scope.')
 
     if 'actual_RAG' in q.columns:
         st.subheader('Predicted vs Actual')
