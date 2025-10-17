@@ -73,12 +73,11 @@ if __name__ == "__main__":
 
     # After training completes and model artifacts are saved, run prediction pipeline
     try:
-        # import here to avoid top-level circular imports during package import
         from src.pipeline.predict_pipeline import predict_with_reasons
 
         # Use the raw data saved during ingestion as the input for predictions
         raw_input_path = obj.ingestion_config.raw_data_path
-        print(f"Running prediction pipeline on raw data: {raw_input_path}")
+        print(f"Running prediction pipeline : {raw_input_path}")
         predict_with_reasons(input_csv=raw_input_path)
     except Exception as e:
         logging.info(f"Prediction pipeline skipped or failed: {e}")

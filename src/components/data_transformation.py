@@ -42,10 +42,8 @@ class DataTransformation:
 
             # Build OneHotEncoder in a way that's compatible with multiple sklearn versions
             try:
-                # sklearn 1.2+ uses 'sparse_output'
                 ohe = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
             except TypeError:
-                # older sklearn versions use 'sparse'
                 ohe = OneHotEncoder(handle_unknown="ignore", sparse=False)
 
             cat_pipeline = Pipeline(
@@ -81,7 +79,7 @@ class DataTransformation:
             train_df = pd.read_csv(train_path)
             test_df = pd.read_csv(test_path)
 
-            # Strip whitespace from column names to avoid accidental mismatch
+            # Remove whitespace from column names
             train_df.columns = train_df.columns.str.strip()
             test_df.columns = test_df.columns.str.strip()
 
@@ -89,7 +87,6 @@ class DataTransformation:
 
             logging.info("Obtaining preprocessing object")
 
-            # Auto-detect target column: prefer 'RAG' if present (seen in dataset), else fallback to last column
             if 'RAG' in train_df.columns:
                 target_column_name = 'RAG'
             else:
@@ -98,7 +95,6 @@ class DataTransformation:
 
             logging.info(f"Using '{target_column_name}' as target column")
 
-            # Drop target column from input features before creating preprocessor
             if target_column_name not in train_df.columns:
                 raise CustomException(f"Target column '{target_column_name}' not found in training data", sys)
 
@@ -137,7 +133,6 @@ class DataTransformation:
                 except Exception:
                     logging.info('RAG conversion skipped')
 
-            # Frequency-encode high-cardinality categorical columns to reduce dimensionality
             try:
                 high_card_threshold = 20
                 freq_encoded_cols = []
@@ -168,13 +163,11 @@ class DataTransformation:
             input_feature_train_arr = preprocessing_obj.fit_transform(input_feature_train_df)
             input_feature_test_arr = preprocessing_obj.transform(input_feature_test_df)
 
-            # If transformer returns sparse matrices, convert to dense arrays
             if hasattr(input_feature_train_arr, "toarray"):
                 input_feature_train_arr = input_feature_train_arr.toarray()
             if hasattr(input_feature_test_arr, "toarray"):
                 input_feature_test_arr = input_feature_test_arr.toarray()
 
-            # Ensure target arrays are column vectors with shape (n_samples, 1)
             target_feature_train_array = np.array(target_feature_train_df).reshape(-1, 1)
             target_feature_test_array = np.array(target_feature_test_df).reshape(-1, 1)
 
@@ -190,7 +183,6 @@ class DataTransformation:
                     sys,
                 )
 
-            # Concatenate features and target (both 2D)
             train_arr = np.c_[input_feature_train_arr, target_feature_train_array]
             test_arr = np.c_[input_feature_test_arr, target_feature_test_array]
 
