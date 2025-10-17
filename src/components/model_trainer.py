@@ -23,6 +23,8 @@ from sklearn.metrics import (
     auc,
     confusion_matrix,
     ConfusionMatrixDisplay,
+    classification_report,
+    precision_recall_fscore_support,
 )
 from sklearn.exceptions import UndefinedMetricWarning
 from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split
@@ -65,6 +67,8 @@ class ModelTrainerConfig:
     test_csv = os.path.join("artifacts", "test.csv")
     roc_plot_path = os.path.join("artifacts", "roc_curve.png")
     confusion_matrix_path = os.path.join("artifacts", "confusion_matrix.png")
+    classification_report_csv = os.path.join("artifacts", "classification_report.csv")
+    classification_metrics_csv = os.path.join("artifacts", "classification_metrics.csv")
 
 
 class ModelTrainer:
@@ -325,6 +329,35 @@ class ModelTrainer:
                         plt.savefig(self.model_trainer_config.confusion_matrix_path)
                         plt.close(fig_cm)
                         logging.info(f"Saved confusion matrix to {self.model_trainer_config.confusion_matrix_path}")
+
+                        # Classification metrics: precision, recall, f1 (per-class and averages)
+                        try:
+                            # compute per-class precision/recall/f1
+                            labels_for_metrics = list(range(len(labels))) if labels is not None else None
+                            p, r, f1, support = precision_recall_fscore_support(y_test_enc_safe, y_pred_safe, labels=labels_for_metrics, zero_division=0)
+                            report = classification_report(y_test_enc_safe, y_pred_safe, labels=labels_for_metrics, target_names=[str(x) for x in labels], zero_division=0)
+                            # Save report text
+                            os.makedirs(os.path.dirname(self.model_trainer_config.classification_report_csv), exist_ok=True)
+                            with open(self.model_trainer_config.classification_report_csv, 'w', encoding='utf-8') as fh:
+                                fh.write(report)
+                            # Save numeric metrics to CSV
+                            metrics_df = pd.DataFrame({
+                                'label': [str(x) for x in labels],
+                                'precision': p,
+                                'recall': r,
+                                'f1': f1,
+                                'support': support,
+                            })
+                            metrics_df.loc['macro_avg'] = [ 'macro_avg', metrics_df['precision'].mean(), metrics_df['recall'].mean(), metrics_df['f1'].mean(), metrics_df['support'].sum() ]
+                            # Suppress pandas FutureWarning about concat behavior when assigning rows with different dtypes
+                            with warnings.catch_warnings():
+                                warnings.filterwarnings('ignore', category=FutureWarning)
+                                metrics_df.loc['micro_avg'] = [ 'micro_avg', None, None, None, metrics_df['support'].sum() ]
+                            metrics_df.to_csv(self.model_trainer_config.classification_metrics_csv, index=False)
+                            logging.info(f"Saved classification report to {self.model_trainer_config.classification_report_csv}")
+                            logging.info(f"Saved classification metrics to {self.model_trainer_config.classification_metrics_csv}")
+                        except Exception as e:
+                            logging.warning(f"Failed to compute/save classification metrics: {e}")
 
                         # ROC curve (binary/multiclass)
                         try:
