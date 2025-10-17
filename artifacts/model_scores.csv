@@ -1,6 +1,6 @@
 Model,Score
-Random Forest,0.8222222222222222
-Decision Tree,0.7777777777777778
+Random Forest,0.7777777777777778
+Decision Tree,0.8
 Logistic Regression,0.7777777777777778
 XGBoost,0.8666666666666667
 CatBoost,0.8

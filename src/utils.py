@@ -3,7 +3,12 @@ import sys
 
 import numpy as np
 import pandas as pd
-import dill
+# Prefer dill if available (better at serializing complex objects); fall back to
+# the stdlib pickle if dill is not installed so scripts work in minimal envs.
+try:
+    import dill as _pickle_lib
+except Exception:
+    import pickle as _pickle_lib
 from sklearn.metrics import r2_score, accuracy_score
 
 from src.exception import CustomException
@@ -14,9 +19,8 @@ def save_object(file_path, obj):
         dir_path = os.path.dirname(file_path)
         os.makedirs(dir_path, exist_ok=True)
 
-        import pickle
         with open(file_path, 'wb') as file_obj:
-            dill.dump(obj, file_obj)
+            _pickle_lib.dump(obj, file_obj)
 
     except Exception as e:
         raise CustomException(e, sys)
