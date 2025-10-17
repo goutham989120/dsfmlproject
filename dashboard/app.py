@@ -168,6 +168,64 @@ with left:
         st.markdown('Conda alternative:')
         st.code(conda_cmd, language='bash')
         st.info('Copy-paste the pip command into the terminal that runs Streamlit (same Python executable).')
+    # Optional: one-click installer (requires user confirmation)
+    with st.expander('One-click install (advanced)'):
+        st.write('Careful: this will run pip in the Python process that runs Streamlit and modify the environment.')
+        agree = st.checkbox('I understand and want to install dill into the Streamlit Python environment')
+        if 'dill_install_running' not in st.session_state:
+            st.session_state.dill_install_running = False
+        if agree:
+            install_btn = st.button('Install dill now')
+        else:
+            install_btn = False
+        if install_btn and not st.session_state.dill_install_running:
+            st.session_state.dill_install_running = True
+            installer_placeholder = st.empty()
+            try:
+                py_exec = sys.executable
+            except Exception:
+                py_exec = 'python'
+            pip_cmd = [py_exec, '-m', 'pip', 'install', 'dill']
+            installer_placeholder.text('Running: ' + ' '.join(pip_cmd))
+            try:
+                # Stream output
+                proc = subprocess.Popen(pip_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                out_lines = []
+                import time
+                startt = time.time()
+                # generous timeout for install
+                tmo = 600
+                while True:
+                    if proc.stdout is None:
+                        break
+                    ln = proc.stdout.readline()
+                    if ln:
+                        out_lines.append(ln)
+                        installer_placeholder.text(''.join(out_lines[-1000:]))
+                    if proc.poll() is not None:
+                        rem = proc.stdout.read()
+                        if rem:
+                            out_lines.append(rem)
+                            installer_placeholder.text(''.join(out_lines[-1000:]))
+                        break
+                    if (time.time() - startt) > tmo:
+                        try:
+                            proc.kill()
+                        except Exception:
+                            pass
+                        out_lines.append('\n[Installer killed after timeout]')
+                        installer_placeholder.text(''.join(out_lines[-1000:]))
+                        break
+                    time.sleep(0.1)
+                rc = proc.poll()
+                if rc == 0:
+                    st.success('dill installed successfully. Please restart Streamlit to pick up the new package.')
+                else:
+                    st.error(f'dill install finished with exit code {rc}. See output above.')
+            except Exception as e:
+                st.error('Installer failed: ' + str(e))
+            finally:
+                st.session_state.dill_install_running = False
     if st.button('Predict now'):
         with st.spinner('Running prediction pipeline...'):
             root = Path.cwd()
