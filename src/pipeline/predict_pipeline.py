@@ -31,7 +31,7 @@ MODEL_BUNDLE_PATH = os.path.join('artifacts', 'model_bundle.pkl')
 MODEL_PATH = os.path.join('artifacts', 'model.pkl')
 
 
-def load_pickle(path: str):
+def load_pickle(path: str, auto_install_dill: bool = False):
     if not os.path.exists(path):
         return None
     with open(path, 'rb') as f:
@@ -45,11 +45,33 @@ def load_pickle(path: str):
             try:
                 import dill as _dill
             except Exception as ie:
-                raise CustomException(
-                    f"Failed to deserialize {path}: the file requires 'dill' but the package is not installed.\n"
-                    f"Install it with: pip install dill",
-                    sys,
-                ) from ie
+                # Optionally attempt to auto-install dill if requested via flag or env var
+                auto_env = os.environ.get('DSFML_AUTO_INSTALL_DILL', '').lower() in ('1', 'true', 'yes')
+                if auto_install_dill or auto_env:
+                    try:
+                        import subprocess
+                        cmd = [sys.executable, '-m', 'pip', 'install', 'dill']
+                        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=600)
+                        if proc.returncode != 0:
+                            raise Exception(f"pip install returned {proc.returncode}: {proc.stdout}")
+                        # try importing again
+                        import importlib
+                        importlib.invalidate_caches()
+                        import dill as _dill
+                    except Exception as ie2:
+                        raise CustomException(
+                            f"Failed to auto-install 'dill' while deserializing {path}.\n"
+                            f"Tried: {' '.join(cmd)}\n"
+                            f"Error: {ie2}\n"
+                            f"Please install dill manually: pip install dill",
+                            sys,
+                        ) from ie2
+                else:
+                    raise CustomException(
+                        f"Failed to deserialize {path}: the file requires 'dill' but the package is not installed.\n"
+                        f"Install it with: pip install dill",
+                        sys,
+                    ) from ie
             try:
                 f.seek(0)
                 return _dill.load(f)
@@ -63,6 +85,25 @@ def load_pickle(path: str):
                 f.seek(0)
                 return _dill.load(f)
             except ModuleNotFoundError:
+                # If auto-install requested, attempt install then retry
+                auto_env = os.environ.get('DSFML_AUTO_INSTALL_DILL', '').lower() in ('1', 'true', 'yes')
+                if auto_install_dill or auto_env:
+                    try:
+                        import subprocess
+                        cmd = [sys.executable, '-m', 'pip', 'install', 'dill']
+                        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=600)
+                        if proc.returncode != 0:
+                            raise Exception(f"pip install returned {proc.returncode}: {proc.stdout}")
+                        import importlib
+                        importlib.invalidate_caches()
+                        import dill as _dill
+                        f.seek(0)
+                        return _dill.load(f)
+                    except Exception as ie2:
+                        raise CustomException(
+                            f"Failed to auto-install 'dill' while deserializing {path}.\nTried: {' '.join(cmd)}\nError: {ie2}\nPlease install dill manually: pip install dill",
+                            sys,
+                        ) from ie2
                 raise CustomException(
                     f"Failed to deserialize {path}: unknown error and 'dill' is not installed.\n"
                     f"Try installing dill: pip install dill\nOriginal error: {e}",
@@ -158,7 +199,7 @@ def reason_from_row(row: pd.Series) -> str:
     return '; '.join(unique)
 
 
-def predict_with_reasons(input_csv: str = None, output_csv: str = None):
+def predict_with_reasons(input_csv: str = None, output_csv: str = None, auto_install_dill: bool = False):
     # If caller didn't provide an input, or provided path doesn't exist,
     # allow using an uploaded dataset placed in `uploads/data.csv` or a local
     # `data.csv` at repo root. This makes it easy to drop a CSV into the repo
@@ -220,7 +261,7 @@ def predict_with_reasons(input_csv: str = None, output_csv: str = None):
                 freq = train_df[col].value_counts(normalize=True)
             feature_df_for_transform[col] = feature_df_for_transform[col].map(freq).fillna(0) if freq is not None else 0
 
-    preprocessor = load_pickle(PREPROCESSOR_PATH)
+    preprocessor = load_pickle(PREPROCESSOR_PATH, auto_install_dill=auto_install_dill)
     transformed = None
     transformed_feature_names = None
     if preprocessor is not None:
@@ -254,14 +295,14 @@ def predict_with_reasons(input_csv: str = None, output_csv: str = None):
             LOGGER.warning(f"Preprocessor transform failed: {e}")
             transformed = None
 
-    model_bundle = load_pickle(MODEL_BUNDLE_PATH)
+    model_bundle = load_pickle(MODEL_BUNDLE_PATH, auto_install_dill=auto_install_dill)
     model = None
     label_encoder = None
     if model_bundle is not None and isinstance(model_bundle, dict) and 'model' in model_bundle:
         model = model_bundle.get('model')
         label_encoder = model_bundle.get('label_encoder')
     else:
-        model = load_pickle(MODEL_PATH)
+        model = load_pickle(MODEL_PATH, auto_install_dill=auto_install_dill)
     if model is None:
         raise CustomException('No trained model found in artifacts. Run training first.', sys)
 
@@ -440,10 +481,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Predict RAG and produce reasons for DSF projects')
     parser.add_argument('--input', '-i', help='Input CSV path', default=DEFAULT_INPUT)
     parser.add_argument('--output', '-o', help='Output CSV path', default=DEFAULT_OUTPUT)
+    parser.add_argument('--auto-install-dill', dest='auto_install_dill', action='store_true',
+                        help='If set, attempt to pip install dill automatically when needed (requires network)')
     args = parser.parse_args()
 
     try:
-        predict_with_reasons(input_csv=args.input, output_csv=args.output)
+        predict_with_reasons(input_csv=args.input, output_csv=args.output, auto_install_dill=getattr(args, 'auto_install_dill', False))
         # Signal a clear completion marker for supervising processes (dashboard)
         try:
             print('PREDICTION_COMPLETE', flush=True)
