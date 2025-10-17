@@ -65,6 +65,8 @@ artifacts/
 ├── model_scores.csv
 ├── model_comparison.png
 └── prediction_output.csv
+|_confusion_matrix.png
+|_model_scores.csv
 ```
 **6. Tech Stack :**
 Python 3.8+
