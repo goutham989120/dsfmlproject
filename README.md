@@ -12,26 +12,29 @@ This project automates the end-to-end machine learning workflow from data ingest
     
 **3. Folder Structure :**
 
-📦 dsfmlproject/
- ┣ 📂 notebook/data/
- ┃ ┗ 📄 Project_Progress_Report_Status.csv
- ┣ 📂 src/
- ┃ ┣ 📂 components/
- ┃ ┃ ┣ 📄 data_ingestion.py
- ┃ ┃ ┣ 📄 data_transformation.py
- ┃ ┃ ┗ 📄 model_trainer.py
- ┃ ┣ 📂 pipeline/
- ┃ ┃ ┗ 📄 predict_pipeline.py
- ┃ ┣ 📄 utils.py
- ┃ ┣ 📄 exception.py
- ┃ ┗ 📄 logger.py
- ┣ 📂 artifacts/
- ┃ ┣ 📄 data.csv
- ┃ ┣ 📄 train.csv
- ┃ ┣ 📄 test.csv
- ┃ ┣ 📄 preprocessor.pkl
- ┃ ┗ 📄 model.pkl
- ┗ 📄 README.md
+```
+dsfmlproject/
+├── notebook/
+│   └── data/
+│       └── Project_Progress_Report_Status.csv
+├── src/
+│   ├── components/
+│   │   ├── data_ingestion.py
+│   │   ├── data_transformation.py
+│   │   └── model_trainer.py
+│   ├── pipeline/
+│   │   └── predict_pipeline.py
+│   ├── utils.py
+│   ├── exception.py
+│   └── logger.py
+├── artifacts/
+│   ├── data.csv
+│   ├── train.csv
+│   ├── test.csv
+│   ├── preprocessor.pkl
+│   └── model.pkl
+├── README.md
+```
 
 **4. How to Run :**
     # Step 1: Create environment 
