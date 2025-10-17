@@ -155,6 +155,19 @@ with left:
             uploaded_path = str(target)
         except Exception as ex:
             st.error(f'Failed to save uploaded file: {ex}')
+    # Helper: show python executable and pip install command for dill
+    if st.button('Show python/pip command to install dill'):
+        try:
+            py_exec = sys.executable
+        except Exception:
+            py_exec = 'python'
+        pip_cmd = f"{py_exec} -m pip install dill"
+        conda_cmd = "conda install -c conda-forge dill"
+        st.markdown('**Install command for the Python used by Streamlit**')
+        st.code(pip_cmd, language='bash')
+        st.markdown('Conda alternative:')
+        st.code(conda_cmd, language='bash')
+        st.info('Copy-paste the pip command into the terminal that runs Streamlit (same Python executable).')
     if st.button('Predict now'):
         with st.spinner('Running prediction pipeline...'):
             root = Path.cwd()
@@ -206,6 +219,19 @@ with left:
                 st.write('Prediction exit code:', retcode)
                 if killed:
                     st.warning('Prediction process was killed due to timeout.')
+                # If the process printed a helpful instruction to install dill,
+                # surface it as a friendly UI error with copyable commands.
+                try:
+                    output_text = ''.join(lines[-2000:]) if lines else ''
+                    if 'Install it with: pip install dill' in output_text or "requires 'dill'" in output_text:
+                        st.error('The prediction artifacts require the Python package "dill" to be installed.')
+                        st.markdown('Run one of the following in your terminal to install it:')
+                        st.code('pip install dill', language='bash')
+                        st.markdown('Or with conda:')
+                        st.code('conda install -c conda-forge dill', language='bash')
+                        st.info('Make sure you install into the same Python environment that runs Streamlit (check `python -c "import sys; print(sys.executable)"`).')
+                except Exception:
+                    pass
             except Exception as ex:
                 st.error('Failed to run prediction pipeline: ' + str(ex))
             # regenerate visuals: run helper scripts and stream their output with timeouts
