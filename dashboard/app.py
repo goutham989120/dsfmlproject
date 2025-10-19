@@ -232,12 +232,16 @@ with left:
             # call the predict pipeline script using the Python executable
             try:
                 predict_script = str(root / 'src' / 'pipeline' / 'predict_pipeline.py')
-                cmd = [sys.executable, predict_script]
+                cmd = [sys.executable, predict_script, '--auto-install-dill']
                 if uploaded_path:
                     cmd += ['--input', uploaded_path]
 
                 # Run process and stream stdout/stderr to the UI so users see progress.
-                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                # Ensure subprocess has DSFML_AUTO_INSTALL_DILL set so the predict script
+                # will attempt to install dill if it's missing.
+                env = os.environ.copy()
+                env.setdefault('DSFML_AUTO_INSTALL_DILL', '1')
+                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
                 placeholder = st.empty()
                 lines = []
                 import time
