@@ -80,6 +80,9 @@ else:
         if 'predicted_EAC_date' in tmp.columns:
             col_map['predicted_EAC_date'] = 'predicted_EAC_date'
         df = tmp.rename(columns=col_map).copy()
+    else:
+        # ensure df is always defined to avoid NameError when compact file is empty/missing
+        df = pd.DataFrame()
 
 if df.empty:
     st.error('No predictions found for selected scope. Run the pipeline or pick a different scope.')
