@@ -85,8 +85,8 @@ else:
         df = pd.DataFrame()
 
 if df.empty:
-    st.error('No predictions found for selected scope. Run the pipeline or pick a different scope.')
-    st.stop()
+    st.info('No predictions found for selected scope. You can run the prediction pipeline using the "Predict now" button on the left, or switch the scope to "All predictions".')
+    # Continue rendering the page so users can access the Predict button and other controls
 
 # Try to compute basic metrics if actual_RAG present
 metrics = {}
