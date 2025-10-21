@@ -1,23 +1,25 @@
-Found 44 rows in predictions.csv
-Labels (union): Amber, Green, Red
+Found 58 rows in predictions.csv
+Labels (union): Amber, Green, Red, nan
 
 Confusion matrix derived from predictions.csv (rows=actual, cols=predicted):
-predicted  Amber  Green  Red
-actual                      
-Amber         19      0    2
-Green          1     11    7
-Red            1      0    3
+predicted  Amber  Green  Red  nan
+actual                           
+Amber         19      1    0    1
+Green          1     26    1    0
+Red            1      3    5    0
 
 Loaded confusion_matrix.csv from training artifacts:
-       Amber  Green  Red
-Amber     21      0    0
-Green      3     12    1
-Red        2      0    6
+       Amber  Green  Red  nan
+Amber     19      1    0    1
+Green      1     26    1    0
+Red        2      1    6    0
+NaN        0      0    0    0
 
 Mapped training confusion matrix to textual labels using saved label encoder:
-       Amber  Green  Red
-Amber     21      0    0
-Green      3     12    1
-Red        2      0    6
+       Amber  Green  Red  nan
+Amber     19      1    0    1
+Green      1     26    1    0
+Red        2      1    6    0
+nan        0      0    0    0
 
-Predictions-derived: total samples=44, total correct (diag sum)=33
+Predictions-derived: total samples=58, total correct (diag sum)=50
