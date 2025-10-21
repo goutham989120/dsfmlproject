@@ -74,11 +74,12 @@ def load_pickle(path: str, auto_install_dill: bool = False):
                             sys,
                         ) from ie2
                 else:
-                    raise CustomException(
-                        f"Failed to deserialize {path}: the file requires 'dill' but the package is not installed.\n"
-                        f"Install it with: pip install dill",
-                        sys,
-                    ) from ie
+                    # Do not raise a fatal exception here; log and return None so the
+                    # prediction pipeline can continue in a degraded mode. This avoids
+                    # surfacing repeated long pip traces in UIs that cannot install
+                    # packages (e.g., Streamlit hosted environments).
+                    LOGGER.warning("Failed to deserialize %s: 'dill' not installed. Returning None.", path)
+                    return None
             try:
                 f.seek(0)
                 return _dill.load(f)
@@ -116,11 +117,11 @@ def load_pickle(path: str, auto_install_dill: bool = False):
                             f"Failed to auto-install 'dill' while deserializing {path}.\nTried: {' '.join(cmd)}\nError: {ie2}\nPlease install dill manually: pip install dill",
                             sys,
                         ) from ie2
-                raise CustomException(
-                    f"Failed to deserialize {path}: unknown error and 'dill' is not installed.\n"
-                    f"Try installing dill: pip install dill\nOriginal error: {e}",
-                    sys,
-                )
+                # If dill is not installed and auto-install is not enabled or failed,
+                # don't raise a fatal exception; log and return None so downstream
+                # code can run in a degraded mode.
+                LOGGER.warning("Failed to deserialize %s: dill not available, returning None. Original error: %s", path, e)
+                return None
             except Exception as e2:
                 raise CustomException(e2, sys)
 
