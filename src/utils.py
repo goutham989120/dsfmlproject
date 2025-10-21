@@ -14,6 +14,50 @@ from sklearn.metrics import r2_score, accuracy_score
 from src.exception import CustomException
 from sklearn.preprocessing import LabelEncoder
 
+
+def find_input_file(preferred_subdir='notebook/data'):
+    """Discover an input file to use for ingestion/prediction.
+
+    Search order:
+    1. Date-prefixed files in `notebook/data` (YYYY-MM-DD*)
+    2. Any CSV/XLSX in `notebook/data` (newest)
+    3. Any CSV/XLSX in `uploads` (newest)
+    4. './data.csv' in project root
+
+    Returns absolute path or None if not found.
+    """
+    try:
+        nb_dir = os.path.join(*preferred_subdir.split('/'))
+        candidates = []
+        if os.path.isdir(nb_dir):
+            for fname in os.listdir(nb_dir):
+                if fname.lower().endswith(('.csv', '.xlsx', '.xls')):
+                    candidates.append(os.path.join(nb_dir, fname))
+        if candidates:
+            import re
+            date_pref = [p for p in candidates if re.match(r"^\d{4}-\d{2}-\d{2}", os.path.basename(p))]
+            if date_pref:
+                return os.path.abspath(max(date_pref, key=os.path.getmtime))
+            return os.path.abspath(max(candidates, key=os.path.getmtime))
+
+        # fallback to uploads
+        uploads_dir = 'uploads'
+        uploads_candidates = []
+        if os.path.isdir(uploads_dir):
+            for fname in os.listdir(uploads_dir):
+                if fname.lower().endswith(('.csv', '.xlsx', '.xls')):
+                    uploads_candidates.append(os.path.join(uploads_dir, fname))
+        if uploads_candidates:
+            return os.path.abspath(max(uploads_candidates, key=os.path.getmtime))
+
+        # fallback to data.csv
+        if os.path.exists('data.csv'):
+            return os.path.abspath('data.csv')
+
+        return None
+    except Exception:
+        return None
+
 def save_object(file_path, obj):
     try:
         dir_path = os.path.dirname(file_path)

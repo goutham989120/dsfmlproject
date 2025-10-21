@@ -15,7 +15,7 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from src.exception import CustomException
-from src.utils import save_object
+from src.utils import save_object, find_input_file
 
 try:
     import dill as pickle
@@ -204,24 +204,23 @@ def predict_with_reasons(input_csv: str = None, output_csv: str = None, auto_ins
     # allow using an uploaded dataset placed in `uploads/data.csv` or a local
     # `data.csv` at repo root. This makes it easy to drop a CSV into the repo
     # and run predictions without changing the script.
-    candidates = []
-    if input_csv:
-        candidates.append(input_csv)
-    # common upload locations
-    candidates.extend([
-        os.path.join('uploads', 'data.csv'),
-        os.path.join('.', 'data.csv'),
-        DEFAULT_INPUT,
-    ])
+    # If caller specified input_csv and it exists, use it. Otherwise discover one.
+    if input_csv and os.path.exists(input_csv):
+        chosen = input_csv
+    else:
+        chosen = find_input_file()
+        if chosen is None:
+            raise CustomException("Input file not found in notebook/data, uploads/, or project root (data.csv)", sys)
+    input_csv = chosen
 
-    chosen_input = None
-    for c in candidates:
-        if c and os.path.exists(c):
-            chosen_input = c
-            break
-    if chosen_input is None:
-        raise CustomException(f"Input file not found. Tried: {candidates}", sys)
-    input_csv = chosen_input
+    # If the chosen file came from notebook/data, echo which file was picked
+    try:
+        nb_dir = os.path.abspath(os.path.join('notebook', 'data'))
+        if os.path.commonpath([os.path.abspath(input_csv), nb_dir]) == nb_dir:
+            print(f"Picked notebook/data file for ingestion: {os.path.basename(input_csv)}", flush=True)
+            LOGGER.info(f"Picked notebook/data file for ingestion: {os.path.basename(input_csv)}")
+    except Exception:
+        pass
     output_csv = output_csv or DEFAULT_OUTPUT
 
     LOGGER.info(f'Using input CSV: {input_csv}')
