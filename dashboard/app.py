@@ -409,8 +409,14 @@ with right:
     with c1:
         st.subheader('Predicted RAG distribution')
         fig, ax = plt.subplots()
-        sns.countplot(data=q, x='predicted_RAG', order=sorted(q['predicted_RAG'].unique()), ax=ax)
-        st.pyplot(fig)
+        if 'predicted_RAG' in q.columns and q['predicted_RAG'].dropna().shape[0] > 0:
+            try:
+                sns.countplot(data=q, x='predicted_RAG', order=sorted(q['predicted_RAG'].unique()), ax=ax)
+                st.pyplot(fig)
+            except Exception:
+                st.write('Unable to render Predicted RAG distribution.')
+        else:
+            st.write('No predicted RAG available for the selected dataset/scope.')
     with c2:
         st.subheader('Probability histogram')
         fig2, ax2 = plt.subplots()
@@ -441,13 +447,19 @@ with right:
     st.subheader('Top predicted projects (sample)')
     show_cols = ['DSF Project ID', 'predicted_RAG', 'predicted_probability', 'predicted_EAC_date', 'actual_RAG', 'actual_RAG_reason', 'predicted_RAG_reason']
     show_cols = [c for c in show_cols if c in q.columns]
-    st.dataframe(q[show_cols].head(50))
+    if show_cols:
+        st.dataframe(q[show_cols].head(50))
+    else:
+        st.write('No columns available to display for predicted projects.')
 
     # Top reasons
     st.subheader('Top predicted reasons (text)')
-    reasons = q['predicted_RAG_reason'].dropna().astype(str)
-    top_reasons = reasons.value_counts().head(20)
-    st.bar_chart(top_reasons)
+    if 'predicted_RAG_reason' in q.columns and q['predicted_RAG_reason'].dropna().shape[0] > 0:
+        reasons = q['predicted_RAG_reason'].dropna().astype(str)
+        top_reasons = reasons.value_counts().head(20)
+        st.bar_chart(top_reasons)
+    else:
+        st.write('No predicted reasons available for the selected dataset/scope.')
 
     # Feature importances
     if feature_importances is not None:
