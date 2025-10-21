@@ -137,7 +137,14 @@ except Exception:
 with st.expander('Dataset summary'):
     st.write('Rows:', len(df))
     st.write('Columns:', list(df.columns))
-    st.write(df.describe(include='all'))
+    # Only call describe when DataFrame has at least one column
+    if df is None or df.empty or len(df.columns) == 0:
+        st.write('No data available to describe.')
+    else:
+        try:
+            st.write(df.describe(include='all'))
+        except Exception:
+            st.write('Unable to generate summary statistics for this dataset.')
 
 # Layout: left filters, right main visualisations
 left, right = st.columns([1, 3])
