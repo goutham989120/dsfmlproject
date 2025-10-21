@@ -53,6 +53,13 @@ def load_pickle(path: str, auto_install_dill: bool = False):
                         cmd = [sys.executable, '-m', 'pip', 'install', 'dill']
                         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=600)
                         if proc.returncode != 0:
+                            # If pip failed because of permission issues, avoid raising
+                            # a verbose error that repeatedly shows up in the Streamlit UI.
+                            out = proc.stdout or ''
+                            low = out.lower()
+                            if 'permission denied' in low or 'errno 13' in low or "could not install packages due to an oserror" in low:
+                                LOGGER.warning("Auto-install of 'dill' failed due to permissions; continuing without dill. Output: %s", out)
+                                return None
                             raise Exception(f"pip install returned {proc.returncode}: {proc.stdout}")
                         # try importing again
                         import importlib
@@ -93,6 +100,11 @@ def load_pickle(path: str, auto_install_dill: bool = False):
                         cmd = [sys.executable, '-m', 'pip', 'install', 'dill']
                         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=600)
                         if proc.returncode != 0:
+                            out = proc.stdout or ''
+                            low = out.lower()
+                            if 'permission denied' in low or 'errno 13' in low or "could not install packages due to an oserror" in low:
+                                LOGGER.warning("Auto-install of 'dill' failed due to permissions; continuing without dill. Output: %s", out)
+                                return None
                             raise Exception(f"pip install returned {proc.returncode}: {proc.stdout}")
                         import importlib
                         importlib.invalidate_caches()
@@ -494,5 +506,14 @@ if __name__ == '__main__':
         except Exception:
             pass
     except Exception as e:
-        print(f"Error during prediction: {e}")
-        raise
+        # If the failure relates to failing to auto-install dill due to permissions,
+        # print a concise, user-friendly message instead of the full pip trace which
+        # can pollute the Streamlit UI.
+        msg = str(e)
+        low = msg.lower()
+        if 'failed to auto-install' in low and ('permission denied' in low or 'errno 13' in low or 'could not install packages due to an oserror' in low):
+            print("Error during prediction: 'dill' is not installed and auto-install failed due to permissions.\nPlease install dill into the Python environment that runs the pipeline: `pip install dill`.")
+            sys.exit(1)
+        else:
+            print(f"Error during prediction: {e}")
+            raise

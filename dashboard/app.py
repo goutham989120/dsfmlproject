@@ -281,13 +281,27 @@ with left:
                 # surface it as a friendly UI error with copyable commands.
                 try:
                     output_text = ''.join(lines[-2000:]) if lines else ''
-                    if 'Install it with: pip install dill' in output_text or "requires 'dill'" in output_text:
-                        st.error('The prediction artifacts require the Python package "dill" to be installed.')
-                        st.markdown('Run one of the following in your terminal to install it:')
+                    # Detect the concise permission failure message printed by predict_pipeline
+                    if 'dill' in output_text and 'auto-install failed due to permissions' in output_text.lower():
+                        st.error("The prediction step requires the 'dill' package but automatic installation failed due to permission restrictions.")
+                        st.markdown('Install `dill` into the Python environment that runs the prediction pipeline (or Streamlit) with:')
                         st.code('pip install dill', language='bash')
-                        st.markdown('Or with conda:')
-                        st.code('conda install -c conda-forge dill', language='bash')
-                        st.info('Make sure you install into the same Python environment that runs Streamlit (check `python -c "import sys; print(sys.executable)"`).')
+                        st.info('If you cannot install packages in this environment, ask your admin to install dill or run the prediction pipeline from a writable environment.')
+                        # Offer to reveal full logs on demand (keeps UI tidy)
+                        if st.button('Show full prediction logs'):
+                            st.text_area('Full prediction output', value=output_text, height=400)
+                    else:
+                        if 'Install it with: pip install dill' in output_text or "requires 'dill'" in output_text:
+                            st.error('The prediction artifacts require the Python package "dill" to be installed.')
+                            st.markdown('Run one of the following in your terminal to install it:')
+                            st.code('pip install dill', language='bash')
+                            st.markdown('Or with conda:')
+                            st.code('conda install -c conda-forge dill', language='bash')
+                            st.info('Make sure you install into the same Python environment that runs Streamlit (check `python -c "import sys; print(sys.executable)"`).')
+                        else:
+                            # No special hint found — show last few lines for context
+                            if output_text.strip():
+                                st.text_area('Prediction output', value=output_text[-2000:], height=300)
                 except Exception:
                     pass
             except Exception as ex:
