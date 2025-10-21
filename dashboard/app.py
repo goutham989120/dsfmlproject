@@ -15,6 +15,11 @@ st.set_page_config(page_title='DSFML Project — Predictions Dashboard', layout=
 
 st.title('DSFML Project — Predictions Dashboard')
 
+# Resolve project root and artifact/upload directories relative to this file
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+ARTIFACTS_DIR = PROJECT_ROOT / 'artifacts'
+UPLOADS_DIR = PROJECT_ROOT / 'uploads'
+
 
 def safe_rerun():
     """Attempt to rerun the Streamlit script in a backward-compatible way."""
@@ -41,15 +46,15 @@ scope = st.selectbox('Dataset scope', options=['All predictions', 'Test rows onl
 
 @st.cache_data
 def load_full():
-    path = os.path.join('artifacts', 'predictions_with_reasons.csv')
-    if not os.path.exists(path):
+    path = ARTIFACTS_DIR / 'predictions_with_reasons.csv'
+    if not path.exists():
         return pd.DataFrame()
     return pd.read_csv(path)
 
 @st.cache_data
 def load_compact():
-    path = os.path.join('artifacts', 'predictions.csv')
-    if not os.path.exists(path):
+    path = ARTIFACTS_DIR / 'predictions.csv'
+    if not path.exists():
         return pd.DataFrame()
     return pd.read_csv(path)
 
@@ -97,9 +102,9 @@ if 'actual_RAG' in df.columns and 'predicted_RAG' in df.columns:
 model_bundle = None
 feature_importances = None
 model_features = None
-bundle_path = os.path.join('artifacts', 'model_bundle.pkl')
+bundle_path = ARTIFACTS_DIR / 'model_bundle.pkl'
 try:
-    if os.path.exists(bundle_path):
+    if bundle_path.exists():
         with open(bundle_path, 'rb') as f:
             model_bundle = pickle.load(f)
         model = model_bundle.get('model') if isinstance(model_bundle, dict) else None
@@ -107,15 +112,15 @@ try:
             fi = np.array(model.feature_importances_)
             # try to get feature names from preprocessor
             try:
-                preproc_path = os.path.join('artifacts', 'preprocessor.pkl')
-                if os.path.exists(preproc_path):
+                preproc_path = ARTIFACTS_DIR / 'preprocessor.pkl'
+                if preproc_path.exists():
                     with open(preproc_path, 'rb') as pf:
                         pre = pickle.load(pf)
-                    try:
-                        model_features = list(pre.get_feature_names_out())
-                    except Exception:
-                        # fallback: None
-                        model_features = None
+                try:
+                    model_features = list(pre.get_feature_names_out())
+                except Exception:
+                    # fallback: None
+                    model_features = None
             except Exception:
                 model_features = None
             if model_features is not None and len(model_features) == fi.shape[0]:
@@ -144,7 +149,7 @@ with left:
     uploaded_file = st.file_uploader('Upload CSV for prediction (optional)', type=['csv'])
     if uploaded_file is not None:
         try:
-            uploads_dir = Path('uploads')
+            uploads_dir = UPLOADS_DIR
             uploads_dir.mkdir(parents=True, exist_ok=True)
             # Save uploaded file to disk so pipeline (which runs as subprocess) can access it
             target = uploads_dir / 'data.csv'
@@ -228,7 +233,7 @@ with left:
                 st.session_state.dill_install_running = False
     if st.button('Predict now'):
         with st.spinner('Running prediction pipeline...'):
-            root = Path.cwd()
+            root = PROJECT_ROOT
             # call the predict pipeline script using the Python executable
             try:
                 predict_script = str(root / 'src' / 'pipeline' / 'predict_pipeline.py')
@@ -297,7 +302,7 @@ with left:
             except Exception as ex:
                 st.error('Failed to run prediction pipeline: ' + str(ex))
             # regenerate visuals: run helper scripts and stream their output with timeouts
-            scripts = [root / 'gen_pred_confusion_matrix.py', root / 'compare_preds.py', root / 'analyze_mismatches.py']
+            scripts = [PROJECT_ROOT / 'gen_pred_confusion_matrix.py', PROJECT_ROOT / 'compare_preds.py', PROJECT_ROOT / 'analyze_mismatches.py']
             post_placeholder = st.empty()
             for s in scripts:
                 if not s.exists():
