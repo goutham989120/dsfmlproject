@@ -25,7 +25,63 @@ class DataIngestion:
     def initiate_data_ingestion(self):
         logging.info("Entered the data ingestion method or component")
         try:
+<<<<<<< HEAD
             df = pd.read_csv('notebook/data/2025-07-15 Project Progress Report.csv')
+=======
+            # Flexible input discovery: prefer date-prefixed files in notebook/data,
+            # otherwise newest CSV/XLSX in notebook/data, then uploads, then './data.csv'
+            input_path = None
+            notebook_data_dir = os.path.join('notebook', 'data')
+            candidates = []
+            if os.path.isdir(notebook_data_dir):
+                for fname in os.listdir(notebook_data_dir):
+                    if fname.lower().endswith(('.csv', '.xlsx', '.xls')):
+                        candidates.append(os.path.join(notebook_data_dir, fname))
+
+            if candidates:
+                import re
+                date_pref = [p for p in candidates if re.match(r"^\d{4}-\d{2}-\d{2}", os.path.basename(p))]
+                if date_pref:
+                    input_path = max(date_pref, key=os.path.getmtime)
+                else:
+                    input_path = max(candidates, key=os.path.getmtime)
+            else:
+                # check uploads
+                uploads_dir = os.path.join('uploads')
+                uploads_candidates = []
+                if os.path.isdir(uploads_dir):
+                    for fname in os.listdir(uploads_dir):
+                        if fname.lower().endswith(('.csv', '.xlsx', '.xls')):
+                            uploads_candidates.append(os.path.join(uploads_dir, fname))
+                if uploads_candidates:
+                    input_path = max(uploads_candidates, key=os.path.getmtime)
+                else:
+                    if os.path.exists('data.csv'):
+                        input_path = 'data.csv'
+
+            if not input_path:
+                raise FileNotFoundError("No input data file found in notebook/data, uploads, or project root (data.csv)")
+
+            # If the chosen file came from notebook/data, log and print that selection
+            try:
+                if os.path.commonpath([os.path.abspath(input_path), os.path.abspath(notebook_data_dir)]) == os.path.abspath(notebook_data_dir):
+                    picked_name = os.path.basename(input_path)
+                    logging.info(f"Picked notebook/data file for ingestion: {picked_name}")
+                    print(f"Picked notebook/data file for ingestion: {picked_name}")
+            except Exception:
+                # ignore commonpath errors on weird paths
+                pass
+
+            # read according to extension
+            lower = input_path.lower()
+            if lower.endswith('.csv'):
+                df = pd.read_csv(input_path)
+            elif lower.endswith(('.xlsx', '.xls')):
+                df = pd.read_excel(input_path)
+            else:
+                df = pd.read_csv(input_path)
+
+>>>>>>> b1f066f345e977974f646e1d90d2d9df29ae5944
             logging.info('Read the dataset as dataframe')
 
             os.makedirs(os.path.dirname(self.ingestion_config.train_data_path), exist_ok=True)
