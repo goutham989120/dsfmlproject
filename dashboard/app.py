@@ -246,6 +246,8 @@ with left:
                 # will attempt to install dill if it's missing.
                 env = os.environ.copy()
                 env.setdefault('DSFML_AUTO_INSTALL_DILL', '1')
+                # Allow the dashboard to run even if model artifacts are missing
+                env.setdefault('DSFML_ALLOW_MISSING_MODEL', '1')
                 proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
                 placeholder = st.empty()
                 lines = []

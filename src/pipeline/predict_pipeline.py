@@ -303,7 +303,34 @@ def predict_with_reasons(input_csv: str = None, output_csv: str = None, auto_ins
     else:
         model = load_pickle(MODEL_PATH, auto_install_dill=auto_install_dill)
     if model is None:
-        raise CustomException('No trained model found in artifacts. Run training first.', sys)
+        allow_missing = os.environ.get('DSFML_ALLOW_MISSING_MODEL', '').lower() in ('1', 'true', 'yes')
+        msg = 'No trained model found in artifacts. Run training first.'
+        if allow_missing:
+            # Print a friendly message and write minimal empty artifacts so callers (Streamlit) do not fail
+            print(msg, flush=True)
+            LOGGER.warning(msg)
+            os.makedirs(os.path.dirname(output_csv), exist_ok=True)
+            # write empty predictions_with_reasons.csv with expected headers
+            empty_cols = ['DSF Project ID', 'predicted_RAG', 'predicted_probability', 'predicted_EAC_date', 'actual_RAG', 'actual_RAG_reason', 'predicted_RAG_reason']
+            try:
+                import pandas as _pd
+                _pd.DataFrame(columns=empty_cols).to_csv(output_csv, index=False)
+            except Exception:
+                pass
+            # write empty compact predictions and confusion matrix placeholders
+            try:
+                compact_path = os.path.join('artifacts', 'predictions.csv')
+                _pd.DataFrame(columns=['predicted', 'actual', 'predicted_RAG_reason', 'actual_RAG_reason', 'predicted_EAC_date', 'actual_EAC_date']).to_csv(compact_path, index=False)
+            except Exception:
+                pass
+            try:
+                cm_path = os.path.join('artifacts', 'confusion_matrix_from_predictions.csv')
+                _pd.DataFrame().to_csv(cm_path, index=False)
+            except Exception:
+                pass
+            return pd.DataFrame()
+        else:
+            raise CustomException('No trained model found in artifacts. Run training first.', sys)
 
     # predict
     try:
@@ -344,16 +371,18 @@ def predict_with_reasons(input_csv: str = None, output_csv: str = None, auto_ins
         reason_parts = []
 
         # Get "RAG Reason" if available and not empty
+        val_rr = None
         if 'RAG Reason' in df.columns:
-            val = df['RAG Reason'].iloc[i]
-        if pd.notna(val) and str(val).strip():
-            reason_parts.append(str(val).strip())
+            val_rr = df['RAG Reason'].iloc[i]
+        if pd.notna(val_rr) and str(val_rr).strip():
+            reason_parts.append(str(val_rr).strip())
 
         # Get "RAG Reason + Observations" if available and not empty
+        val_obs = None
         if 'RAG Reason + Observations' in df.columns:
-            val = df['RAG Reason + Observations'].iloc[i]
-        if pd.notna(val) and str(val).strip():
-            reason_parts.append(str(val).strip())
+            val_obs = df['RAG Reason + Observations'].iloc[i]
+        if pd.notna(val_obs) and str(val_obs).strip():
+            reason_parts.append(str(val_obs).strip())
 
         # Join both parts into a single string
         actual_rag_reason = ' | '.join(reason_parts) if reason_parts else ''
