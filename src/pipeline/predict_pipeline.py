@@ -317,35 +317,45 @@ def predict_with_reasons(input_csv: str = None, output_csv: str = None, auto_ins
     else:
         model = load_pickle(MODEL_PATH, auto_install_dill=auto_install_dill)
     if model is None:
-        raise CustomException('No trained model found in artifacts. Run training first.', sys)
-
-    # predict
-    try:
-        X = transformed if transformed is not None else feature_df_for_transform.values
-        probs = None
-        y_pred = None
+        # Instead of failing hard when a model is not available (for example
+        # when deserialization required 'dill' which is not present), create
+        # placeholder predictions so the downstream dashboard can still show
+        # meaningful output and won't repeatedly display errors.
+        LOGGER.warning('No trained model found in artifacts. Generating placeholder predictions.')
         try:
-            probs = model.predict_proba(X)
-            y_idx = np.argmax(probs, axis=1)
+            n_rows = len(df)
         except Exception:
-            y_pred = model.predict(X)
-        if probs is not None:
-            pred_probs = np.max(probs, axis=1)
+            n_rows = 0
+        preds = [None] * n_rows
+        pred_probs = [None] * n_rows
+    else:
+        # predict
+        try:
+            X = transformed if transformed is not None else feature_df_for_transform.values
+            probs = None
+            y_pred = None
             try:
-                if label_encoder is not None:
-                    preds = label_encoder.inverse_transform(y_idx)
-                else:
-                    if hasattr(model, 'classes_'):
-                        preds = np.array(model.classes_)[y_idx]
-                    else:
-                        preds = y_idx
+                probs = model.predict_proba(X)
+                y_idx = np.argmax(probs, axis=1)
             except Exception:
-                preds = y_idx
-        else:
-            pred_probs = [None] * (X.shape[0] if hasattr(X, 'shape') else len(X))
-            preds = y_pred
-    except Exception as e:
-        raise CustomException(e, sys)
+                y_pred = model.predict(X)
+            if probs is not None:
+                pred_probs = np.max(probs, axis=1)
+                try:
+                    if label_encoder is not None:
+                        preds = label_encoder.inverse_transform(y_idx)
+                    else:
+                        if hasattr(model, 'classes_'):
+                            preds = np.array(model.classes_)[y_idx]
+                        else:
+                            preds = y_idx
+                except Exception:
+                    preds = y_idx
+            else:
+                pred_probs = [None] * (X.shape[0] if hasattr(X, 'shape') else len(X))
+                preds = y_pred
+        except Exception as e:
+            raise CustomException(e, sys)
 
     # --- Build full predictions_with_reasons.csv ---
     results = []
