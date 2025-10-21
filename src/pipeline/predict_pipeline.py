@@ -1,10 +1,18 @@
 import os
 import sys
+import subprocess
 import logging
 import pandas as pd
 import numpy as np
-import dill
 from pathlib import Path
+
+# ensure dill is available even in minimal environments (e.g. Streamlit Cloud)
+try:
+    import dill
+except ImportError:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "dill"])
+    import dill
+
 
 
 # When this script is executed directly (python src/pipeline/predict_pipeline.py)
