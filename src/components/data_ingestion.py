@@ -25,9 +25,8 @@ class DataIngestion:
     def initiate_data_ingestion(self):
         logging.info("Entered the data ingestion method or component")
         try:
-<<<<<<< HEAD
             df = pd.read_csv('notebook/data/2025-07-15 Project Progress Report.csv')
-=======
+
             # Flexible input discovery: prefer date-prefixed files in notebook/data,
             # otherwise newest CSV/XLSX in notebook/data, then uploads, then './data.csv'
             input_path = None
@@ -81,7 +80,7 @@ class DataIngestion:
             else:
                 df = pd.read_csv(input_path)
 
->>>>>>> b1f066f345e977974f646e1d90d2d9df29ae5944
+
             logging.info('Read the dataset as dataframe')
 
             os.makedirs(os.path.dirname(self.ingestion_config.train_data_path), exist_ok=True)
