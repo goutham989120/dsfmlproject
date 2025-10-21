@@ -3,7 +3,9 @@ import sys
 import logging
 import pandas as pd
 import numpy as np
+import dill
 from pathlib import Path
+
 
 # When this script is executed directly (python src/pipeline/predict_pipeline.py)
 # the interpreter's sys.path may not include the project root, which prevents

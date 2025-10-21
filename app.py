@@ -7,6 +7,14 @@ from sklearn.model_selection import train_test_split
 from src.components.model_trainer import ModelTrainer, ModelTrainerConfig
 
 
+try:
+    import dill
+except ImportError:
+    import subprocess, sys
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "dill"])
+    import dill
+
+
 app = FastAPI(title="Model Trainer API")
 
 UPLOAD_DIR = "uploads"
