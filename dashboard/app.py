@@ -240,6 +240,12 @@ with left:
                 proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
                 placeholder = st.empty()
                 lines = []
+                # Lines that are noisy and should be hidden from the default UI
+                hide_patterns = [
+                    'Failed to deserialize',
+                    'No trained model found',
+                    'Generating placeholder predictions',
+                ]
                 import time
                 start = time.time()
                 timeout_seconds = 600  # 10 minutes max by default
@@ -250,8 +256,10 @@ with left:
                     line = proc.stdout.readline()
                     if line:
                         lines.append(line)
-                        # Keep the displayed output reasonably sized
-                        display_text = ''.join(lines[-1000:])
+                        # Prepare a filtered view that hides noisy lines by default
+                        recent = lines[-1000:]
+                        filtered = [l for l in recent if not any(pat.lower() in l.lower() for pat in hide_patterns)]
+                        display_text = ''.join(filtered)
                         placeholder.text(display_text)
                     if proc.poll() is not None:
                         # process finished
@@ -259,7 +267,9 @@ with left:
                         remainder = proc.stdout.read()
                         if remainder:
                             lines.append(remainder)
-                            placeholder.text(''.join(lines[-1000:]))
+                            recent = lines[-1000:]
+                            filtered = [l for l in recent if not any(pat.lower() in l.lower() for pat in hide_patterns)]
+                            placeholder.text(''.join(filtered))
                         break
                     # timeout guard
                     if (time.time() - start) > timeout_seconds:
@@ -299,9 +309,14 @@ with left:
                             st.code('conda install -c conda-forge dill', language='bash')
                             st.info('Make sure you install into the same Python environment that runs Streamlit (check `python -c "import sys; print(sys.executable)"`).')
                         else:
-                            # No special hint found — show last few lines for context
-                            if output_text.strip():
-                                st.text_area('Prediction output', value=output_text[-2000:], height=300)
+                            # No special hint found — show last few lines for context (filtered)
+                                    if output_text.strip():
+                                        # default: show filtered output
+                                        filtered_out = '\n'.join([l for l in output_text.splitlines() if not any(pat.lower() in l.lower() for pat in hide_patterns)])
+                                        st.text_area('Prediction output (filtered)', value=filtered_out[-2000:], height=300)
+                                        # allow revealing full logs
+                                        if st.button('Show full prediction logs'):
+                                            st.text_area('Full prediction output', value=output_text, height=400)
                 except Exception:
                     pass
             except Exception as ex:
