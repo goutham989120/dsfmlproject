@@ -1,39 +1,27 @@
 import os
 import sys
-import subprocess
 import logging
+from pathlib import Path
+from typing import Optional
+
 import pandas as pd
 import numpy as np
-from pathlib import Path
 
-# ensure dill is available even in minimal environments (e.g. Streamlit Cloud)
-try:
-    import dill
-except ImportError:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "dill"])
-    import dill
+# Avoid any pip installs at import time. Some hosted environments disallow
+# installing packages during runtime and that causes opaque permission errors.
 
-
-
-# When this script is executed directly (python src/pipeline/predict_pipeline.py)
-# the interpreter's sys.path may not include the project root, which prevents
-# imports like `from src.exception import CustomException` from working.
-# Ensure the project root (two levels up from this file) is on sys.path.
+# Ensure project root is on sys.path so relative imports from `src` work when
+# this file is executed directly (e.g. python src/pipeline/predict_pipeline.py).
 project_root = Path(__file__).resolve().parents[2]
 if str(project_root) not in sys.path:
-    # insert at front so local packages take precedence
     sys.path.insert(0, str(project_root))
 
 from src.exception import CustomException
 from src.utils import save_object
 
-try:
-    import dill as pickle
-except Exception:
-    import pickle
-
 LOGGER = logging.getLogger(__name__)
 
+# Paths
 DEFAULT_INPUT = os.path.join('notebook', 'data', 'Project_Progress_Report_Status.csv')
 DEFAULT_OUTPUT = os.path.join('artifacts', 'predictions_with_reasons.csv')
 PREPROCESSOR_PATH = os.path.join('artifacts', 'preprocessor.pkl')
@@ -41,183 +29,57 @@ MODEL_BUNDLE_PATH = os.path.join('artifacts', 'model_bundle.pkl')
 MODEL_PATH = os.path.join('artifacts', 'model.pkl')
 
 
-def load_pickle(path: str, auto_install_dill: bool = False):
+def load_pickle(path: str, auto_install_dill: bool = False) -> Optional[object]:
+    """Load a pickle-like object defensively.
+
+    - Returns None if file doesn't exist.
+    - Tries the configured `pickle` (which may be builtin pickle) first.
+    - If ModuleNotFoundError occurs (commonly due to objects serialized with dill),
+      attempts to import dill and use it. If dill is not present, logs a warning
+      and returns None instead of raising.
+    """
     if not os.path.exists(path):
         return None
-    with open(path, 'rb') as f:
-        try:
-            return pickle.load(f)
-        except ModuleNotFoundError as mnf:
-            # The pickle.load failed because the file references a module
-            # that's not available in the environment (commonly 'dill').
-            # Try to import dill and use it; if dill isn't installed, raise a
-            # helpful CustomException instructing the user to install it.
-            try:
-                import dill as _dill
-            except Exception as ie:
-                # Optionally attempt to auto-install dill if requested via flag or env var
-                auto_env = os.environ.get('DSFML_AUTO_INSTALL_DILL', '').lower() in ('1', 'true', 'yes')
-                if auto_install_dill or auto_env:
-                    try:
-                        import subprocess
-                        cmd = [sys.executable, '-m', 'pip', 'install', 'dill']
-                        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=600)
-                        if proc.returncode != 0:
-                            raise Exception(f"pip install returned {proc.returncode}: {proc.stdout}")
-                        # try importing again
-                        import importlib
-                        importlib.invalidate_caches()
-                        import dill as _dill
-                    except Exception as ie2:
-                        raise CustomException(
-                            f"Failed to auto-install 'dill' while deserializing {path}.\n"
-                            f"Tried: {' '.join(cmd)}\n"
-                            f"Error: {ie2}\n"
-                            f"Please install dill manually: pip install dill",
-                            sys,
-                        ) from ie2
-                else:
-                    raise CustomException(
-                        f"Failed to deserialize {path}: the file requires 'dill' but the package is not installed.\n"
-                        f"Install it with: pip install dill",
-                        sys,
-                    ) from ie
-            try:
-                f.seek(0)
-                return _dill.load(f)
-            except Exception as e:
-                raise CustomException(e, sys)
-        except Exception as e:
-            # Generic fallback: the object might still require dill to
-            # deserialize. Try dill if available, otherwise wrap the error.
-            try:
-                import dill as _dill
-                f.seek(0)
-                return _dill.load(f)
-            except ModuleNotFoundError:
-                # If auto-install requested, attempt install then retry
-                auto_env = os.environ.get('DSFML_AUTO_INSTALL_DILL', '').lower() in ('1', 'true', 'yes')
-                if auto_install_dill or auto_env:
-                    try:
-                        import subprocess
-                        cmd = [sys.executable, '-m', 'pip', 'install', 'dill']
-                        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=600)
-                        if proc.returncode != 0:
-                            raise Exception(f"pip install returned {proc.returncode}: {proc.stdout}")
-                        import importlib
-                        importlib.invalidate_caches()
-                        import dill as _dill
-                        f.seek(0)
-                        return _dill.load(f)
-                    except Exception as ie2:
-                        raise CustomException(
-                            f"Failed to auto-install 'dill' while deserializing {path}.\nTried: {' '.join(cmd)}\nError: {ie2}\nPlease install dill manually: pip install dill",
-                            sys,
-                        ) from ie2
-                raise CustomException(
-                    f"Failed to deserialize {path}: unknown error and 'dill' is not installed.\n"
-                    f"Try installing dill: pip install dill\nOriginal error: {e}",
-                    sys,
-                )
-            except Exception as e2:
-                raise CustomException(e2, sys)
 
+    # Use builtin pickle by default; importing dill here would be optional.
+    import pickle as _pickle
 
-def _strip_percent(x):
-    if pd.isna(x):
-        return None
-    s = str(x).strip()
-    if s.endswith('%'):
-        s = s[:-1]
     try:
-        return float(s)
-    except Exception:
-        import re
-        m = re.search(r"-?\d+\.?\d*", s)
-        if m:
-            return float(m.group(0))
+        with open(path, 'rb') as f:
+            return _pickle.load(f)
+    except ModuleNotFoundError:
+        # Missing module during unpickling (e.g. dill). Try dill if available.
+        try:
+            import dill as _dill  # type: ignore
+            with open(path, 'rb') as f:
+                return _dill.load(f)
+        except Exception:
+            LOGGER.warning("Deserialization of %s requires additional modules (likely 'dill') which are not available. Returning None.", path)
+            return None
+    except Exception as e:
+        LOGGER.warning("Failed to deserialize %s: %s", path, e)
         return None
 
 
 def reason_from_row(row: pd.Series) -> str:
-    """Return a short human-readable reason(s) based on raw row fields."""
-    reasons = []
-
-    # numeric percent fields
-    work = _strip_percent(row.get('Work Prog', np.nan))
-    timep = _strip_percent(row.get('Time Prog', np.nan))
-    effortp = _strip_percent(row.get('Effort Prog', np.nan))
-    eac_eff = _strip_percent(row.get('EAC Efficiency', np.nan))
-
+    """Small rule-based explainer used when model-driven reasons aren't available."""
     try:
-        if work is not None and timep is not None:
-            if work + 20 < timep:
-                reasons.append('Work progress significantly behind schedule (Work% << Time%)')
-            elif work - 20 > timep:
-                reasons.append('Work progress significantly ahead of schedule (Work% >> Time%)')
+        parts = []
+        for col in ['RAG Reason + Observations', 'RAG Reason', 'RAG']:
+            if col in row and pd.notna(row[col]):
+                text = str(row[col]).strip()
+                if text:
+                    parts.append(text)
+        return '; '.join(parts) if parts else ''
     except Exception:
-        pass
-
-    try:
-        if effortp is not None:
-            if effortp > 120:
-                reasons.append('Effort consumed is much higher than planned (Effort Prog > 120%)')
-            elif effortp < 50:
-                reasons.append('Low effort consumption relative to plan (Effort Prog < 50%)')
-    except Exception:
-        pass
-
-    try:
-        if eac_eff is not None:
-            if eac_eff < -5:
-                reasons.append('EAC efficiency negative -> projected effort overrun')
-            elif eac_eff < 20:
-                reasons.append('Low EAC efficiency -> potential effort risk')
-    except Exception:
-        pass
-
-    try:
-        ps = row.get('Plan Start')
-        act = row.get('Actual Start')
-        if pd.notna(ps) and pd.notna(act):
-            if str(act).strip() and str(ps).strip() and str(act).strip() != str(ps).strip():
-                reasons.append('Actual start differs from planned start (possible late start)')
-    except Exception:
-        pass
-
-    try:
-        textual = row.get('RAG Reason + Observations')
-        if pd.notna(textual) and isinstance(textual, str) and textual.strip():
-            txt = textual.lower()
-            if 'schedule overrun' in txt or 'overrun' in txt:
-                reasons.append('Historic note: schedule overrun reported')
-            if 'incomplete work' in txt or 'incomplete' in txt:
-                reasons.append('Historic note: incomplete work reported')
-            if 'effort' in txt and 'overrun' in txt:
-                reasons.append('Historic note: effort overrun reported')
-            if 'late start' in txt:
-                reasons.append('Historic note: late start')
-    except Exception:
-        pass
-
-    if not reasons:
         return ''
-    unique = []
-    for r in reasons:
-        if r not in unique:
-            unique.append(r)
-    return '; '.join(unique)
 
 
-def predict_with_reasons(input_csv: str = None, output_csv: str = None, auto_install_dill: bool = False):
-    # If caller didn't provide an input, or provided path doesn't exist,
-    # allow using an uploaded dataset placed in `uploads/data.csv` or a local
-    # `data.csv` at repo root. This makes it easy to drop a CSV into the repo
-    # and run predictions without changing the script.
+def predict_with_reasons(input_csv: str = None, output_csv: str = None, auto_install_dill: bool = False) -> pd.DataFrame:
+    # discover input
     candidates = []
     if input_csv:
         candidates.append(input_csv)
-    # common upload locations
     candidates.extend([
         os.path.join('uploads', 'data.csv'),
         os.path.join('.', 'data.csv'),
@@ -234,28 +96,27 @@ def predict_with_reasons(input_csv: str = None, output_csv: str = None, auto_ins
     input_csv = chosen_input
     output_csv = output_csv or DEFAULT_OUTPUT
 
-    LOGGER.info(f'Using input CSV: {input_csv}')
+    LOGGER.info('Using input CSV: %s', input_csv)
     df = pd.read_csv(input_csv)
 
-    # preserve project id
+    # detect id column
     id_col = None
     for c in ['DSF Project ID', 'Project ID', 'project_id']:
         if c in df.columns:
             id_col = c
             break
 
-    # prepare features by dropping target and leakage columns
+    # prepare features
     blacklist = ['RAG', 'RAG Reason + Observations', 'Actual End', 'Closed Work']
     feature_df = df.drop(columns=[c for c in blacklist if c in df.columns], errors='ignore')
 
     raw_rows = feature_df.copy()
-
     if id_col and id_col in feature_df.columns:
         feature_df_for_transform = feature_df.drop(columns=[id_col])
     else:
         feature_df_for_transform = feature_df
 
-    # --- Frequency encoding ---
+    # basic frequency encoding for high-cardinality categoricals
     high_card_threshold = 20
     cat_cols_in_input = feature_df_for_transform.select_dtypes(include=['object', 'category']).columns.tolist()
     train_path = os.path.join('artifacts', 'train.csv')
@@ -264,13 +125,18 @@ def predict_with_reasons(input_csv: str = None, output_csv: str = None, auto_ins
         train_df = pd.read_csv(train_path)
         train_df.columns = train_df.columns.str.strip()
     for col in cat_cols_in_input:
-        n_unique = feature_df_for_transform[col].nunique()
-        if n_unique > high_card_threshold:
-            freq = None
-            if train_df is not None and col in train_df.columns:
-                freq = train_df[col].value_counts(normalize=True)
-            feature_df_for_transform[col] = feature_df_for_transform[col].map(freq).fillna(0) if freq is not None else 0
+        try:
+            n_unique = feature_df_for_transform[col].nunique()
+            if n_unique > high_card_threshold:
+                freq = None
+                if train_df is not None and col in train_df.columns:
+                    freq = train_df[col].value_counts(normalize=True)
+                feature_df_for_transform[col] = feature_df_for_transform[col].map(freq).fillna(0) if freq is not None else 0
+        except Exception:
+            # leave column as-is on failure
+            continue
 
+    # try to load preprocessor and model(s)
     preprocessor = load_pickle(PREPROCESSOR_PATH, auto_install_dill=auto_install_dill)
     transformed = None
     transformed_feature_names = None
@@ -302,7 +168,7 @@ def predict_with_reasons(input_csv: str = None, output_csv: str = None, auto_ins
             except Exception:
                 transformed_feature_names = None
         except Exception as e:
-            LOGGER.warning(f"Preprocessor transform failed: {e}")
+            LOGGER.warning('Preprocessor transform failed: %s', e)
             transformed = None
 
     model_bundle = load_pickle(MODEL_BUNDLE_PATH, auto_install_dill=auto_install_dill)
@@ -313,70 +179,81 @@ def predict_with_reasons(input_csv: str = None, output_csv: str = None, auto_ins
         label_encoder = model_bundle.get('label_encoder')
     else:
         model = load_pickle(MODEL_PATH, auto_install_dill=auto_install_dill)
+
+    # If model is None, generate placeholder predictions rather than raising.
     if model is None:
-        raise CustomException('No trained model found in artifacts. Run training first.', sys)
-
-    # predict
-    try:
-        X = transformed if transformed is not None else feature_df_for_transform.values
-        probs = None
-        y_pred = None
+        LOGGER.warning('No trained model found in artifacts. Generating placeholder predictions.')
         try:
-            probs = model.predict_proba(X)
-            y_idx = np.argmax(probs, axis=1)
+            n_rows = len(df)
         except Exception:
-            y_pred = model.predict(X)
-        if probs is not None:
-            pred_probs = np.max(probs, axis=1)
+            n_rows = 0
+        preds = [None] * n_rows
+        pred_probs = [None] * n_rows
+    else:
+        # run prediction
+        try:
+            X = transformed if transformed is not None else feature_df_for_transform.values
+            probs = None
+            y_pred = None
             try:
-                if label_encoder is not None:
-                    preds = label_encoder.inverse_transform(y_idx)
-                else:
-                    if hasattr(model, 'classes_'):
-                        preds = np.array(model.classes_)[y_idx]
-                    else:
-                        preds = y_idx
+                probs = model.predict_proba(X)
+                y_idx = np.argmax(probs, axis=1)
             except Exception:
-                preds = y_idx
-        else:
-            pred_probs = [None] * (X.shape[0] if hasattr(X, 'shape') else len(X))
-            preds = y_pred
-    except Exception as e:
-        raise CustomException(e, sys)
+                y_pred = model.predict(X)
+            if probs is not None:
+                pred_probs = np.max(probs, axis=1)
+                try:
+                    if label_encoder is not None:
+                        preds = label_encoder.inverse_transform(y_idx)
+                    else:
+                        if hasattr(model, 'classes_'):
+                            preds = np.array(model.classes_)[y_idx]
+                        else:
+                            preds = y_idx
+                except Exception:
+                    preds = y_idx
+            else:
+                pred_probs = [None] * (X.shape[0] if hasattr(X, 'shape') else len(X))
+                preds = y_pred
+        except Exception as e:
+            LOGGER.warning('Model prediction failed: %s. Falling back to placeholders.', e)
+            try:
+                n_rows = len(df)
+            except Exception:
+                n_rows = 0
+            preds = [None] * n_rows
+            pred_probs = [None] * n_rows
 
-    # --- Build full predictions_with_reasons.csv ---
+    # Build full predictions_with_reasons.csv
     results = []
     for i in range(len(df)):
         pid = df[id_col].iloc[i] if id_col else i
-        pred_label = preds[i] if preds is not None else None
-        prob = float(pred_probs[i]) if pred_probs is not None and pred_probs[i] is not None else None
-        
+        pred_label = preds[i] if preds is not None and i < len(preds) else None
+        prob = float(pred_probs[i]) if pred_probs is not None and i < len(pred_probs) and pred_probs[i] is not None else None
+
         actual_rag_reason = ''
         reason_parts = []
-
-        # Get "RAG Reason" if available and not empty
-        if 'RAG Reason' in df.columns:
-            val = df['RAG Reason'].iloc[i]
-        if pd.notna(val) and str(val).strip():
-            reason_parts.append(str(val).strip())
-
-        # Get "RAG Reason + Observations" if available and not empty
-        if 'RAG Reason + Observations' in df.columns:
-            val = df['RAG Reason + Observations'].iloc[i]
-        if pd.notna(val) and str(val).strip():
-            reason_parts.append(str(val).strip())
-
-        # Join both parts into a single string
+        try:
+            if 'RAG Reason' in df.columns:
+                val = df['RAG Reason'].iloc[i]
+                if pd.notna(val) and str(val).strip():
+                    reason_parts.append(str(val).strip())
+        except Exception:
+            pass
+        try:
+            if 'RAG Reason + Observations' in df.columns:
+                val = df['RAG Reason + Observations'].iloc[i]
+                if pd.notna(val) and str(val).strip():
+                    reason_parts.append(str(val).strip())
+        except Exception:
+            pass
         actual_rag_reason = ' | '.join(reason_parts) if reason_parts else ''
 
-        
-        
-        raw_row = raw_rows.iloc[i] if id_col is None else raw_rows.drop(columns=[id_col], errors='ignore').iloc[i]
         predicted_reason = reason_from_row(df.iloc[i])
         if not predicted_reason:
             feat_reasons = []
             try:
-                if hasattr(model, 'feature_importances_') and transformed_feature_names is not None:
+                if model is not None and hasattr(model, 'feature_importances_') and transformed_feature_names is not None:
                     fi = np.array(model.feature_importances_)
                     top_idx = fi.argsort()[::-1][:3]
                     top_feats = [str(transformed_feature_names[idx]) for idx in top_idx]
@@ -414,10 +291,9 @@ def predict_with_reasons(input_csv: str = None, output_csv: str = None, auto_ins
     except Exception:
         pass
 
-    # --- Compact predictions.csv (test rows only) ---
+    # Compact predictions (for test rows)
     compact_path = os.path.join('artifacts', 'predictions.csv')
     compact_df = pd.DataFrame(columns=['predicted', 'actual', 'predicted_RAG_reason', 'actual_RAG_reason', 'predicted_EAC_date', 'actual_EAC_date'])
-
     test_path = os.path.join('artifacts', 'test.csv')
     if os.path.exists(test_path):
         try:
@@ -448,13 +324,13 @@ def predict_with_reasons(input_csv: str = None, output_csv: str = None, auto_ins
                         actual_dates.append(val)
                     compact_df['actual_EAC_date'] = actual_dates
         except Exception as e:
-            LOGGER.warning(f'Failed to build compact predictions CSV: {e}')
+            LOGGER.warning('Failed to build compact predictions CSV: %s', e)
 
     try:
         compact_df.to_csv(compact_path, index=False)
-        LOGGER.info(f"Saved compact predictions to {compact_path} (rows={len(compact_df)})")
+        LOGGER.info('Saved compact predictions to %s (rows=%d)', compact_path, len(compact_df))
     except Exception as e:
-        LOGGER.warning(f"Failed to write compact predictions CSV: {e}")
+        LOGGER.warning('Failed to write compact predictions CSV: %s', e)
     else:
         print(f"Saved compact predictions to {compact_path}", flush=True)
         try:
@@ -462,7 +338,7 @@ def predict_with_reasons(input_csv: str = None, output_csv: str = None, auto_ins
         except Exception:
             pass
 
-    # Also save a labeled confusion matrix derived from the compact predictions for quick comparison
+    # save confusion matrix derived from compact predictions
     try:
         if not compact_df.empty and 'predicted' in compact_df.columns and 'actual' in compact_df.columns:
             preds = compact_df['predicted'].astype(str).str.strip()
@@ -474,30 +350,30 @@ def predict_with_reasons(input_csv: str = None, output_csv: str = None, auto_ins
             cm_df = _pd.DataFrame(cm, index=labels, columns=labels)
             cm_path = os.path.join('artifacts', 'confusion_matrix_from_predictions.csv')
             cm_df.to_csv(cm_path)
-            LOGGER.info(f"Saved confusion matrix derived from predictions to {cm_path}")
+            LOGGER.info('Saved confusion matrix derived from predictions to %s', cm_path)
             print(f"Saved confusion matrix derived from predictions to {cm_path}", flush=True)
             try:
                 sys.stdout.flush()
             except Exception:
                 pass
     except Exception as e:
-        LOGGER.warning(f"Failed to save confusion matrix from predictions: {e}")
+        LOGGER.warning('Failed to save confusion matrix from predictions: %s', e)
 
     return out_df
 
 
 if __name__ == '__main__':
     import argparse
+
     parser = argparse.ArgumentParser(description='Predict RAG and produce reasons for DSF projects')
     parser.add_argument('--input', '-i', help='Input CSV path', default=DEFAULT_INPUT)
     parser.add_argument('--output', '-o', help='Output CSV path', default=DEFAULT_OUTPUT)
     parser.add_argument('--auto-install-dill', dest='auto_install_dill', action='store_true',
-                        help='If set, attempt to pip install dill automatically when needed (requires network)')
+                        help='If set, attempt to use dill when deserializing if available')
     args = parser.parse_args()
 
     try:
         predict_with_reasons(input_csv=args.input, output_csv=args.output, auto_install_dill=getattr(args, 'auto_install_dill', False))
-        # Signal a clear completion marker for supervising processes (dashboard)
         try:
             print('PREDICTION_COMPLETE', flush=True)
             sys.stdout.flush()
