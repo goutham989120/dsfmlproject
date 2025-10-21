@@ -42,7 +42,7 @@ def safe_rerun():
         return
 
 # Dataset scope selector: All predictions vs test-only predictions
-scope = st.selectbox('Dataset scope', options=['All predictions', 'Test rows only'], index=1, help='Choose full predictions_with_reasons (All) or compact predictions.csv (Test rows only)')
+scope = st.selectbox('Dataset scope', options=['All predictions', 'Test rows only'], index=0, help='Choose full predictions_with_reasons (All) or compact predictions.csv (Test rows only)')
 
 @st.cache_data
 def load_full():
