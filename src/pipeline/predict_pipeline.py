@@ -33,6 +33,15 @@ MODEL_PATH = os.path.join('artifacts', 'model.pkl')
 
 
 def load_pickle(path: str, auto_install_dill: bool = False):
+    # Support calling with paths relative to the repository root
+    if not os.path.exists(path):
+        # project_root is defined above in this module; resolve relative paths against it
+        try:
+            alt = os.path.join(project_root, path)
+            if os.path.exists(alt):
+                path = alt
+        except Exception:
+            pass
     if not os.path.exists(path):
         return None
     # with open(path, 'rb') as f:
