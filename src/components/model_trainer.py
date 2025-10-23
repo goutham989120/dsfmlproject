@@ -267,7 +267,18 @@ class ModelTrainer:
             # ==================== MODEL SELECTION ====================
             best_model_name = max(test_scores, key=test_scores.get)
             best_model = best_models[best_model_name]
-            logging.info(f"✅ Best model: {best_model_name} (test score: {test_scores[best_model_name]:.4f})")
+            best_score = test_scores[best_model_name]
+            logging.info(f" Best model: {best_model_name} (test score: {best_score:.4f})")
+            # Also print to console (so VS Code/terminal shows the result)
+            try:
+                if isinstance(best_score, float):
+                    score_display = f"{best_score:.4f}"
+                else:
+                    score_display = str(best_score)
+                print(f"BEST MODEL => {best_model_name} | Score: {score_display}")
+            except Exception:
+                # Fallback: still ensure logging recorded it
+                pass
 
             save_object(self.model_trainer_config.trained_model_file_path, best_model)
             # Also save a bundle with model + label encoder (if classification)
