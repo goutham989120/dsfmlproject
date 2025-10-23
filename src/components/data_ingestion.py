@@ -1,5 +1,6 @@
 import os
 import sys
+import glob
 from src.exception import CustomException
 from src.logger import logging
 import pandas as pd
@@ -22,10 +23,72 @@ class DataIngestion:
     def __init__(self):
         self.ingestion_config = DataIngestionConfig()
 
-    def initiate_data_ingestion(self):
+    def initiate_data_ingestion(self, input_path: str = None):
+        """
+        Initiate data ingestion.
+
+        If input_path is provided it will be used. Otherwise this method will
+        search a set of sensible locations for any CSV and pick the first match.
+        The discovered file path will be stored in self.ingestion_config.raw_data_path
+        so downstream code can reuse it.
+        """
         logging.info("Entered the data ingestion method or component")
         try:
-            df = pd.read_csv('notebook/data/Project_Progress_Report_Status.csv')
+            # Build candidate list: explicit arg, env var, then common locations
+            candidates = []
+            if input_path:
+                candidates.append(input_path)
+
+            env_path = os.environ.get('DSFML_INPUT') or os.environ.get('DSFML_INPUT_CSV')
+            if env_path:
+                candidates.append(env_path)
+
+            # explicit common files / folders to search
+            candidates.extend([
+                os.path.join('uploads', '*.csv'),
+                os.path.join('notebook', 'data', '*.csv'),
+                os.path.join('.', 'data.csv'),
+            ])
+
+            chosen = None
+
+            # Try direct candidate paths first
+            for c in candidates:
+                if not c:
+                    continue
+                # If candidate contains a glob pattern, search for matches
+                if any(ch in c for ch in ['*', '?', '[']):
+                    matches = glob.glob(c)
+                    if matches:
+                        # Prefer filenames that contain Project_Progress_Report_Status if available
+                        preferred = [m for m in matches if 'Project_Progress_Report_Status' in os.path.basename(m)]
+                        chosen = preferred[0] if preferred else matches[0]
+                        break
+                else:
+                    if os.path.exists(c):
+                        chosen = c
+                        break
+
+            # As a last resort, search the repo recursively for any CSV
+            if chosen is None:
+                matches = glob.glob(os.path.join('**', '*.csv'), recursive=True)
+                # filter out files in .git or venv directories
+                matches = [m for m in matches if '.git' not in m and 'venv' not in m]
+                if matches:
+                    preferred = [m for m in matches if 'Project_Progress_Report_Status' in os.path.basename(m)]
+                    chosen = preferred[0] if preferred else matches[0]
+
+            if chosen is None:
+                raise FileNotFoundError(
+                    'No input CSV found. Tried explicit input, DSFML_INPUT/DSFML_INPUT_CSV env, uploads/, notebook/data/, repo root.'
+                )
+
+            # Normalize chosen to a relative path
+            chosen = os.path.normpath(chosen)
+            logging.info(f"Reading dataset from: {chosen}")
+            df = pd.read_csv(chosen)
+            # update configured raw data path so downstream code can reference it
+            self.ingestion_config.raw_data_path = chosen
             logging.info('Read the dataset as dataframe')
 
             os.makedirs(os.path.dirname(self.ingestion_config.train_data_path), exist_ok=True)
