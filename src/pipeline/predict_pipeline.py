@@ -4,6 +4,7 @@ import logging
 import pandas as pd
 import numpy as np
 from pathlib import Path
+import dill
 
 # When this script is executed directly (python src/pipeline/predict_pipeline.py)
 # the interpreter's sys.path may not include the project root, which prevents
@@ -34,7 +35,11 @@ MODEL_PATH = os.path.join('artifacts', 'model.pkl')
 def load_pickle(path: str, auto_install_dill: bool = False):
     if not os.path.exists(path):
         return None
-    with open(path, 'rb') as f:
+    # with open(path, 'rb') as f:
+    def load_pickle(file_path):
+        """Load a dill-serialized pickle file safely."""
+        with open(file_path, "rb") as f:
+            return dill.load(f)
         try:
             return pickle.load(f)
         except ModuleNotFoundError as mnf:
