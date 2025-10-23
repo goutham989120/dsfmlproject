@@ -44,87 +44,57 @@ def load_pickle(path: str, auto_install_dill: bool = False):
             pass
     if not os.path.exists(path):
         return None
-    # with open(path, 'rb') as f:
-    def load_pickle(file_path):
-        """Load a dill-serialized pickle file safely."""
-        with open(file_path, "rb") as f:
-            return dill.load(f)
-        try:
-            return pickle.load(f)
-        except ModuleNotFoundError as mnf:
-            # The pickle.load failed because the file references a module
-            # that's not available in the environment (commonly 'dill').
-            # Try to import dill and use it; if dill isn't installed, raise a
-            # helpful CustomException instructing the user to install it.
+    # Try builtin pickle (or the alias 'pickle' which may be dill)
+    try:
+        with open(path, 'rb') as f:
             try:
-                import dill as _dill
-            except Exception as ie:
-                # Optionally attempt to auto-install dill if requested via flag or env var
-                auto_env = os.environ.get('DSFML_AUTO_INSTALL_DILL', '').lower() in ('1', 'true', 'yes')
-                if auto_install_dill or auto_env:
-                    try:
-                        import subprocess
-                        cmd = [sys.executable, '-m', 'pip', 'install', 'dill']
-                        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=600)
-                        if proc.returncode != 0:
-                            raise Exception(f"pip install returned {proc.returncode}: {proc.stdout}")
-                        # try importing again
-                        import importlib
-                        importlib.invalidate_caches()
-                        import dill as _dill
-                    except Exception as ie2:
-                        raise CustomException(
-                            f"Failed to auto-install 'dill' while deserializing {path}.\n"
-                            f"Tried: {' '.join(cmd)}\n"
-                            f"Error: {ie2}\n"
-                            f"Please install dill manually: pip install dill",
-                            sys,
-                        ) from ie2
-                else:
-                    raise CustomException(
-                        f"Failed to deserialize {path}: the file requires 'dill' but the package is not installed.\n"
-                        f"Install it with: pip install dill",
-                        sys,
-                    ) from ie
+                return pickle.load(f)
+            except ModuleNotFoundError:
+                # The pickle references an unknown module (often when dill was used).
+                # Attempt to use dill explicitly.
+                pass
+            except Exception:
+                # fall through to try dill explicitly
+                pass
+    except Exception as e:
+        # Opening failed for some reason - raise as CustomException
+        raise CustomException(f"Failed to open pickle file {path}: {e}", sys)
+
+    # At this point builtin pickle failed to deserialize; try dill
+    try:
+        import dill as _dill
+        with open(path, 'rb') as f:
             try:
-                f.seek(0)
                 return _dill.load(f)
             except Exception as e:
-                raise CustomException(e, sys)
-        except Exception as e:
-            # Generic fallback: the object might still require dill to
-            # deserialize. Try dill if available, otherwise wrap the error.
+                raise CustomException(f"dill failed to load {path}: {e}", sys)
+    except ModuleNotFoundError:
+        # dill not installed: optionally auto-install
+        auto_env = os.environ.get('DSFML_AUTO_INSTALL_DILL', '').lower() in ('1', 'true', 'yes')
+        if auto_install_dill or auto_env:
             try:
+                import subprocess
+                cmd = [sys.executable, '-m', 'pip', 'install', 'dill']
+                proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=600)
+                if proc.returncode != 0:
+                    raise Exception(f"pip install returned {proc.returncode}: {proc.stdout}")
+                import importlib
+                importlib.invalidate_caches()
                 import dill as _dill
-                f.seek(0)
-                return _dill.load(f)
-            except ModuleNotFoundError:
-                # If auto-install requested, attempt install then retry
-                auto_env = os.environ.get('DSFML_AUTO_INSTALL_DILL', '').lower() in ('1', 'true', 'yes')
-                if auto_install_dill or auto_env:
-                    try:
-                        import subprocess
-                        cmd = [sys.executable, '-m', 'pip', 'install', 'dill']
-                        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=600)
-                        if proc.returncode != 0:
-                            raise Exception(f"pip install returned {proc.returncode}: {proc.stdout}")
-                        import importlib
-                        importlib.invalidate_caches()
-                        import dill as _dill
-                        f.seek(0)
-                        return _dill.load(f)
-                    except Exception as ie2:
-                        raise CustomException(
-                            f"Failed to auto-install 'dill' while deserializing {path}.\nTried: {' '.join(cmd)}\nError: {ie2}\nPlease install dill manually: pip install dill",
-                            sys,
-                        ) from ie2
+                with open(path, 'rb') as f:
+                    return _dill.load(f)
+            except Exception as ie2:
                 raise CustomException(
-                    f"Failed to deserialize {path}: unknown error and 'dill' is not installed.\n"
-                    f"Try installing dill: pip install dill\nOriginal error: {e}",
+                    f"Failed to auto-install or use 'dill' while deserializing {path}.\nTried: {' '.join(cmd)}\nError: {ie2}\nPlease install dill manually: pip install dill",
                     sys,
-                )
-            except Exception as e2:
-                raise CustomException(e2, sys)
+                ) from ie2
+        else:
+            raise CustomException(
+                f"Failed to deserialize {path}: the file requires 'dill' but the package is not installed.\nInstall it with: pip install dill",
+                sys,
+            )
+    except Exception as e:
+        raise CustomException(f"Failed to deserialize {path} with dill: {e}", sys)
 
 
 def _strip_percent(x):
